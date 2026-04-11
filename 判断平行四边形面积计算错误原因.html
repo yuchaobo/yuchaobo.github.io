@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>平行四边形面积公式探究</title>
+  <style>
+    :root {
+      --page-bg: #d4e4f0;
+      --purple: #6b5b95;
+      --purple-dark: #5a4d82;
+      --pink-btn: #e879a9;
+      --blue-text: #2563eb;
+      --red-h: #dc2626;
+      --grid: #c7d8e8;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: var(--page-bg);
+      color: #1e293b;
+      min-height: 100vh;
+      line-height: 1.55;
+      padding: clamp(4px, 1vw, 10px) clamp(8px, 1.8vw, 18px);
+    }
+
+    .shell {
+      max-width: min(1400px, 100%);
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 12px 48px rgba(30, 60, 90, 0.12);
+      overflow: hidden;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #8b7ab8 0%, var(--purple) 45%, var(--purple-dark) 100%);
+      color: #fff;
+      text-align: center;
+      padding: 0.52rem 0.9rem 0.58rem;
+    }
+
+    .hero h1 {
+      font-size: clamp(1.1rem, 3.2vw, 1.45rem);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .hero p {
+      font-size: 0.84rem;
+      opacity: 0.95;
+      margin-top: 0.2rem;
+    }
+
+    .inner {
+      padding: clamp(5px, 2vw, 5px);
+    }
+
+    /** 主区 : 侧栏 ≈ 3 : 1 */
+    .layout-split {
+      display: grid;
+      gap: 1rem;
+      align-items: start;
+    }
+
+    @media (min-width: 900px) {
+      .layout-split {
+        grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
+      }
+    }
+
+    .side-col {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .side-col .compare {
+      grid-template-columns: 1fr;
+    }
+
+    .tip {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+      margin-bottom: 1rem;
+      font-size: 0.86rem;
+      color: #713f12;
+    }
+
+    .tip strong {
+      display: block;
+      color: #92400e;
+      margin-bottom: 0.35rem;
+    }
+
+    .plot-wrap {
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      background: #f0f7ff;
+      padding: 10px;
+      min-height: min(54vh, 480px);
+    }
+
+    .plot-wrap svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      min-height: 320px;
+      max-height: min(60vh, 540px);
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .plot-wrap svg:active {
+      cursor: grabbing;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.65rem;
+      margin-top: 1rem;
+    }
+
+    @media (min-width: 560px) {
+      .metrics {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+
+    .metric {
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid #e2e8f0;
+      text-align: center;
+    }
+
+    .metric label {
+      display: block;
+      font-size: 1.2rem;
+      color: #64748b;
+      margin-bottom: 0rem;
+    }
+
+    .metric .val {
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: var(--blue-text);
+    }
+
+    .metric.height .val {
+      color: var(--red-h);
+    }
+
+    .btns {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0.65rem;
+      margin-top: 1rem;
+    }
+
+    @media (max-width: 640px) {
+      .btns {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .btn {
+      border: none;
+      padding: 0.65rem 1rem;
+      border-radius: 12px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      transition: filter 0.15s, transform 0.05s;
+    }
+
+    .btn:hover {
+      filter: brightness(1.06);
+    }
+
+    .btn-reset {
+      background: linear-gradient(180deg, #8b7ab8, var(--purple));
+    }
+
+    .btn-demo {
+      background: linear-gradient(180deg, #f472b6, #ec4899);
+    }
+
+    .btn-demo-h {
+      background: linear-gradient(180deg, #5eb88a, #2d9d6f);
+    }
+
+    h2.compare-title {
+      font-size: 1.28rem;
+      margin: 0 0 0.65rem;
+      color: var(--purple-dark);
+    }
+
+    .compare-wrap {
+      background: #fef9c3;
+      border-radius: 14px;
+      padding: 0.85rem;
+      border: 1px solid #fde047;
+    }
+
+    .compare {
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    @media (min-width: 560px) {
+      .compare {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .box {
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+      border: 2px solid;
+    }
+
+    .box.wrong {
+      background: #fff1f2;
+      border-color: #fb7185;
+    }
+
+    .box.ok {
+      background: #ecfdf5;
+      border-color: #34d399;
+    }
+
+    .box h3 {
+      font-size: 1.12rem;
+      margin-bottom: 0.45rem;
+    }
+
+    .box .formula {
+      font-size: 1.28rem;
+      font-weight: 700;
+      font-family: ui-monospace, monospace;
+    }
+
+    .box.wrong .formula {
+      text-decoration: line-through;
+      color: #b91c1c;
+    }
+
+    .box.ok .formula {
+      color: #047857;
+    }
+
+    .box .sub {
+      font-size: 1.02rem;
+      color: #64748b;
+      margin-top: 0.3rem;
+    }
+
+    .side-col .teach {
+      margin-top: 0;
+    }
+
+    .teach {
+      margin-top: 1rem;
+      padding: 0.95rem 1rem;
+      background: #e0f2fe;
+      border-radius: 12px;
+      border: 1px solid #7dd3fc;
+      font-size: 1.2rem;
+      color: #0c4a6e;
+    }
+
+    .teach strong {
+      color: #0369a1;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="shell">
+    <div class="hero">
+      <h1>平行四边形面积公式探究</h1>
+      <p>拖动顶点，观察面积变化，理解正确的面积公式</p>
+    </div>
+
+    <div class="inner">
+      <div class="layout-split">
+        <div class="main-col">
+      <div class="tip">
+        <strong>💡 操作提示</strong>
+        拖动C点或D点，观察当底边和邻边长度保持不变时，高度和面积的变化关系。
+      </div>
+
+      <div class="plot-wrap">
+        <svg id="canvas" viewBox="0 0 680 430" xmlns="http://www.w3.org/2000/svg" aria-label="平行四边形">
+          <defs>
+            <pattern id="smallGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#c7d8e8" stroke-width="0.6" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#smallGrid)" />
+
+          <!-- 整图略缩小并略左移 -->
+          <g transform="translate(-18, 8) translate(340, 188) scale(0.9) translate(-340, -188)">
+            <g id="figTop" display="none" pointer-events="none">
+              <polygon id="paraTop" fill="rgba(139, 122, 184, 0.18)" stroke="#3b82f6" />
+              <line id="baseExtendTop" fill="none" stroke="#3b82f6" display="none" />
+              <line id="heightLineTop" stroke="#dc2626" />
+              <path id="rightAngleHTop" fill="none" stroke="#dc2626" />
+              <text id="lblBaseTop" font-size="14" fill="#2563eb" font-weight="600" text-anchor="middle" />
+              <text id="lblSideTop" font-size="14" fill="#2563eb" font-weight="600" text-anchor="middle" dominant-baseline="central" />
+              <text id="lblHTop" font-size="14" fill="#dc2626" font-weight="700" />
+              <text id="lblATop" font-size="16" font-weight="700" fill="#0f172a">A</text>
+              <text id="lblBTop" font-size="16" font-weight="700" fill="#0f172a">B</text>
+              <text id="lblCTop" font-size="16" font-weight="700" fill="#0f172a">C</text>
+              <text id="lblDTop" font-size="16" font-weight="700" fill="#0f172a">D</text>
+              <text id="lblAreaTop" display="none" fill="#047857" font-weight="600" />
+            </g>
+            <g id="figBottom">
+            <polygon id="para" fill="rgba(139, 122, 184, 0.22)" stroke="#3b82f6" />
+            <!-- 垂足落在 AB 延长线上时：底边所在直线的延长段 -->
+            <line id="baseExtend" fill="none" stroke="#3b82f6" display="none" />
+            <line id="heightLine" stroke="#dc2626" />
+            <path id="rightAngleH" fill="none" stroke="#dc2626" />
+            <text id="lblBase" font-size="14" fill="#2563eb" font-weight="600" text-anchor="middle" />
+            <text id="lblSide" font-size="14" fill="#2563eb" font-weight="600" text-anchor="middle" dominant-baseline="central" />
+            <text id="lblH" font-size="14" fill="#dc2626" font-weight="700" />
+            <text id="lblA" font-size="16" font-weight="700" fill="#0f172a">A</text>
+            <text id="lblB" font-size="16" font-weight="700" fill="#0f172a">B</text>
+            <text id="lblC" font-size="16" font-weight="700" fill="#0f172a">C</text>
+            <text id="lblD" font-size="16" font-weight="700" fill="#0f172a">D</text>
+            <circle id="handleD" r="5" fill="#7c6bb5" stroke="#fff" stroke-width="1.0" style="cursor:grab" />
+            <circle id="handleC" r="5" fill="#7c6bb5" stroke="#fff" stroke-width="1.0" style="cursor:grab" />
+            <text id="lblAreaBottom" display="none" fill="#047857" font-weight="600" />
+            </g>
+          </g>
+        </svg>
+      </div>
+
+      <div class="metrics">
+        <div class="metric">
+          <label>底边长度（固定）</label>
+          <span class="val" id="mBase">8.0 cm</span>
+        </div>
+        <div class="metric">
+          <label>邻边长度（固定）</label>
+          <span class="val" id="mSide">6.0 cm</span>
+        </div>
+        <div class="metric height">
+          <label>高度（变化）</label>
+          <span class="val" id="mHeight">5.0 cm</span>
+        </div>
+        <div class="metric">
+          <label>实际面积</label>
+          <span class="val" id="mArea">40.0 cm²</span>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button type="button" class="btn btn-reset" id="btnReset">重置图形</button>
+        <button type="button" class="btn btn-demo" id="btnDemo">自动演示</button>
+        <button type="button" class="btn btn-demo-h" id="btnDemoH">自动演示高不变</button>
+      </div>
+        </div>
+
+        <aside class="side-col">
+      <div class="compare-wrap">
+        <h2 class="compare-title">公式对比</h2>
+        <div class="compare">
+          <div class="box wrong">
+            <h3>❌ 错误算法</h3>
+            <div class="formula" id="wrongFormula">8 × 6 = 48 cm²</div>
+            <div class="sub">（底 × 邻边）</div>
+          </div>
+          <div class="box ok">
+            <h3>✅ 正确算法</h3>
+            <div class="formula" id="okFormula">8 × 5.0 = 40.0 cm²</div>
+            <div class="sub">（底 × 高）</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="teach">
+        <strong>🎯 学习要点：</strong>平行四边形的面积取决于<strong>底边</strong>和<strong>高</strong>，而不是底边和邻边。当底边和邻边长度不变时，通过改变倾斜角度，高度会发生变化，面积也随之变化。这证明了「底 × 邻边」的算法是错误的，正确的公式必须是「底 × 高」。
+      </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const BASE_CM = 8
+      const SIDE_CM = 6
+      /** 图上比例尺（px/cm）；增大则平行四边形等比放大 */
+      const PX_PER_CM = 27
+      /** 与 22 对齐时的视觉倍率，用于描边、字号、标注偏移 */
+      const VIS = PX_PER_CM / 22
+      /** 与 SVG viewBox 宽度一致（根坐标系水平中心） */
+      const VIEW_W = 680
+      /** 与 SVG 内 <g> 一致，用于指针坐标与几何局部坐标互转 */
+      const G_TX = -18
+      const G_TY = 8
+      const G_S = 0.9
+      const G_CX = 340
+      const G_CY = 188
+      const PHI_MIN = 0.06
+      const PHI_MAX = Math.PI - 0.06
+      /** 根 SVG 坐标 → 几何所用局部坐标（与 g 上 transform 互逆） */
+      const ROOT_OFF_X = (1 - G_S) * G_CX + G_TX
+      const ROOT_OFF_Y = (1 - G_S) * G_CY + G_TY
+      /** AB 中点在根坐标系下位于画布水平正中时，对应的局部 x，再反推 A 点 */
+      const abMidLocalX = (VIEW_W / 2 - ROOT_OFF_X) / G_S
+      const ax0 = abMidLocalX - (BASE_CM * PX_PER_CM) / 2
+      const ay0Bottom = 390
+      /** 上方演示用平行四边形底边所在 y（与下方错开） */
+      const ay0Top = 168
+
+      /** 从 A 指向 D：phi 为从 +x 转向「向上」的角；D = A + r(cos φ, -sin φ)（SVG y 向下） */
+      let phi = Math.atan2(5, Math.sqrt(SIDE_CM * SIDE_CM - 5 * 5))
+      let demoTimer = null
+      let demoT0 = 0
+      let dragKind = null
+      let phiTop = phi
+      let phiFrozen = phi
+      let showTopFig = false
+      let demoHActive = false
+      /** 阶段一结束后为 true：上图用「等高线」参数 dX，邻边长度可变 */
+      let topLineMode = false
+      let hTopFrozen = 5
+      let dXTop = 0
+      const figTop = document.getElementById('figTop')
+
+      const para = document.getElementById('para')
+      const baseExtend = document.getElementById('baseExtend')
+      const heightLine = document.getElementById('heightLine')
+      const rightAngleH = document.getElementById('rightAngleH')
+      const lblBase = document.getElementById('lblBase')
+      const lblSide = document.getElementById('lblSide')
+      const lblH = document.getElementById('lblH')
+      const lblA = document.getElementById('lblA')
+      const lblB = document.getElementById('lblB')
+      const lblC = document.getElementById('lblC')
+      const lblD = document.getElementById('lblD')
+      const handleD = document.getElementById('handleD')
+      const handleC = document.getElementById('handleC')
+
+      const paraTop = document.getElementById('paraTop')
+      const baseExtendTop = document.getElementById('baseExtendTop')
+      const heightLineTop = document.getElementById('heightLineTop')
+      const rightAngleHTop = document.getElementById('rightAngleHTop')
+      const lblBaseTop = document.getElementById('lblBaseTop')
+      const lblSideTop = document.getElementById('lblSideTop')
+      const lblHTop = document.getElementById('lblHTop')
+      const lblATop = document.getElementById('lblATop')
+      const lblBTop = document.getElementById('lblBTop')
+      const lblCTop = document.getElementById('lblCTop')
+      const lblDTop = document.getElementById('lblDTop')
+      const lblAreaBottom = document.getElementById('lblAreaBottom')
+      const lblAreaTop = document.getElementById('lblAreaTop')
+      const mHeight = document.getElementById('mHeight')
+      const mArea = document.getElementById('mArea')
+      const okFormula = document.getElementById('okFormula')
+      const svg = document.getElementById('canvas')
+
+      function clamp (v, a, b) {
+        return Math.max(a, Math.min(b, v))
+      }
+
+      function rootToLocal (rx, ry) {
+        return {
+          x: (rx - ROOT_OFF_X) / G_S,
+          y: (ry - ROOT_OFF_Y) / G_S
+        }
+      }
+
+      function clientToLocal (clientX, clientY) {
+        const rect = svg.getBoundingClientRect()
+        const vb = svg.viewBox.baseVal
+        const rx = ((clientX - rect.left) / rect.width) * vb.width + vb.x
+        const ry = ((clientY - rect.top) / rect.height) * vb.height + vb.y
+        return rootToLocal(rx, ry)
+      }
+
+      /** 下底 AB；|AD|=|BC|= 固定邻边；C = B + (D − A) */
+      function geometryAt (phiAngle, baseY) {
+        const k = PX_PER_CM
+        const r = SIDE_CM * k
+        const p = clamp(phiAngle, PHI_MIN, PHI_MAX)
+        const A = { x: ax0, y: baseY }
+        const B = { x: ax0 + BASE_CM * k, y: baseY }
+        const D = { x: ax0 + r * Math.cos(p), y: baseY - r * Math.sin(p) }
+        const C = { x: B.x + (D.x - A.x), y: B.y + (D.y - A.y) }
+        const h = clamp((baseY - D.y) / k, 0.05, SIDE_CM - 0.01)
+        const foot = { x: D.x, y: baseY }
+        return { h, A, B, C, D, foot }
+      }
+
+      /** 上图：底边固定、高固定，D 在水平线上左右移动（邻边长度随 D.x 变化） */
+      function geometryTopLine (hCm, dX, baseY) {
+        const k = PX_PER_CM
+        const A = { x: ax0, y: baseY }
+        const B = { x: ax0 + BASE_CM * k, y: baseY }
+        const D = { x: dX, y: baseY - hCm * k }
+        const C = { x: B.x + (D.x - A.x), y: B.y + (D.y - A.y) }
+        const h = clamp((baseY - D.y) / k, 0.05, SIDE_CM - 0.01)
+        const foot = { x: D.x, y: baseY }
+        return { h, A, B, C, D, foot }
+      }
+
+      function neighborCm (g) {
+        return Math.hypot(g.D.x - g.A.x, g.D.y - g.A.y) / PX_PER_CM
+      }
+
+      function paintParallelogram (els, g, baseY, withHandles) {
+        const pts = [g.A, g.B, g.C, g.D].map(function (p) { return p.x + ',' + p.y }).join(' ')
+        els.para.setAttribute('points', pts)
+        els.para.setAttribute('stroke-width', 2.8 * VIS)
+
+        const fx = g.foot.x
+        const ax = g.A.x
+        const bx = g.B.x
+        if (fx < ax) {
+          els.baseExtend.setAttribute('display', 'inline')
+          els.baseExtend.setAttribute('x1', fx)
+          els.baseExtend.setAttribute('y1', baseY)
+          els.baseExtend.setAttribute('x2', ax)
+          els.baseExtend.setAttribute('y2', baseY)
+        } else if (fx > bx) {
+          els.baseExtend.setAttribute('display', 'inline')
+          els.baseExtend.setAttribute('x1', bx)
+          els.baseExtend.setAttribute('y1', baseY)
+          els.baseExtend.setAttribute('x2', fx)
+          els.baseExtend.setAttribute('y2', baseY)
+        } else {
+          els.baseExtend.setAttribute('display', 'none')
+        }
+        els.baseExtend.setAttribute('stroke-width', 1.85 * VIS)
+        els.baseExtend.setAttribute('stroke-dasharray', (6 * VIS) + ' ' + (5 * VIS))
+        els.baseExtend.setAttribute('opacity', '0.9')
+
+        if (withHandles) {
+          els.handleD.setAttribute('cx', g.D.x)
+          els.handleD.setAttribute('cy', g.D.y)
+          els.handleD.setAttribute('r', 5 * VIS)
+          els.handleC.setAttribute('cx', g.C.x)
+          els.handleC.setAttribute('cy', g.C.y)
+          els.handleC.setAttribute('r', 5 * VIS)
+        }
+
+        els.heightLine.setAttribute('x1', g.D.x)
+        els.heightLine.setAttribute('y1', g.D.y)
+        els.heightLine.setAttribute('x2', g.foot.x)
+        els.heightLine.setAttribute('y2', g.foot.y)
+        els.heightLine.setAttribute('stroke-width', 2 * VIS)
+        els.heightLine.setAttribute('stroke-dasharray', (7 * VIS) + ' ' + (5 * VIS))
+
+        const rs = 10 * VIS
+        const ex = g.foot.x
+        const ey = g.foot.y
+        els.rAngle.setAttribute('d',
+          'M ' + (ex + rs) + ' ' + ey + ' L ' + (ex + rs) + ' ' + (ey - rs) + ' L ' + ex + ' ' + (ey - rs)
+        )
+        els.rAngle.setAttribute('stroke-width', 1.6 * VIS)
+
+        els.lblBase.setAttribute('font-size', 14 * VIS)
+        els.lblBase.setAttribute('x', (g.A.x + g.B.x) / 2)
+        els.lblBase.setAttribute('y', baseY + 18 * VIS)
+        els.lblBase.textContent = '底边 = ' + BASE_CM + ' cm'
+
+        const Bp = g.B
+        const Cp = g.C
+        const vx = Cp.x - Bp.x
+        const vy = Cp.y - Bp.y
+        const vlen = Math.hypot(vx, vy) || 1
+        const mx = (Bp.x + Cp.x) / 2
+        const my = (Bp.y + Cp.y) / 2
+        const pcx = (g.A.x + g.B.x + g.C.x + g.D.x) / 4
+        const pcy = (g.A.y + g.B.y + g.C.y + g.D.y) / 4
+        const nx = -vy / vlen
+        const ny = vx / vlen
+        const outward = (mx - pcx) * nx + (my - pcy) * ny >= 0 ? 1 : -1
+        const pad = 14 * VIS
+        const sx = mx + outward * nx * pad
+        const sy = my + outward * ny * pad
+        let angDeg = Math.atan2(vy, vx) * 180 / Math.PI
+        if (angDeg > 90) angDeg -= 180
+        if (angDeg < -90) angDeg += 180
+        els.lblSide.setAttribute('font-size', 14 * VIS)
+        els.lblSide.setAttribute('x', sx)
+        els.lblSide.setAttribute('y', sy)
+        els.lblSide.setAttribute('transform', 'rotate(' + angDeg + ' ' + sx + ' ' + sy + ')')
+        els.lblSide.textContent = '邻边 = ' + neighborCm(g).toFixed(1) + ' cm'
+
+        els.lblH.setAttribute('font-size', 14 * VIS)
+        els.lblH.setAttribute('x', g.D.x + 10 * VIS)
+        els.lblH.setAttribute('y', (g.D.y + g.foot.y) / 2)
+        els.lblH.textContent = '高 = ' + g.h.toFixed(1) + ' cm'
+
+        els.lblA.setAttribute('font-size', 16 * VIS)
+        els.lblA.setAttribute('x', g.A.x - 16 * VIS)
+        els.lblA.setAttribute('y', g.A.y + 22 * VIS)
+        els.lblB.setAttribute('font-size', 16 * VIS)
+        els.lblB.setAttribute('x', g.B.x + 8 * VIS)
+        els.lblB.setAttribute('y', g.B.y + 22 * VIS)
+        els.lblC.setAttribute('font-size', 16 * VIS)
+        els.lblC.setAttribute('x', g.C.x + 8 * VIS)
+        els.lblC.setAttribute('y', g.C.y - 10 * VIS)
+        els.lblD.setAttribute('font-size', 16 * VIS)
+        els.lblD.setAttribute('x', g.D.x - 20 * VIS)
+        els.lblD.setAttribute('y', g.D.y - 12 * VIS)
+      }
+
+      const bottomEls = {
+        para: para,
+        baseExtend: baseExtend,
+        heightLine: heightLine,
+        rAngle: rightAngleH,
+        lblBase: lblBase,
+        lblSide: lblSide,
+        lblH: lblH,
+        lblA: lblA,
+        lblB: lblB,
+        lblC: lblC,
+        lblD: lblD,
+        handleD: handleD,
+        handleC: handleC
+      }
+
+      const topEls = {
+        para: paraTop,
+        baseExtend: baseExtendTop,
+        heightLine: heightLineTop,
+        rAngle: rightAngleHTop,
+        lblBase: lblBaseTop,
+        lblSide: lblSideTop,
+        lblH: lblHTop,
+        lblA: lblATop,
+        lblB: lblBTop,
+        lblC: lblCTop,
+        lblD: lblDTop,
+        handleD: null,
+        handleC: null
+      }
+
+      function layoutAreaFormula (textEl, g) {
+        const fs = 11 * VIS
+        const hStr = g.h.toFixed(1)
+        const areaStr = (BASE_CM * g.h).toFixed(1)
+        const maxX = Math.max(g.A.x, g.B.x, g.C.x, g.D.x)
+        const minY = Math.min(g.A.y, g.B.y, g.C.y, g.D.y)
+        const maxY = Math.max(g.A.y, g.B.y, g.C.y, g.D.y)
+        const midY = (minY + maxY) / 2
+        const x = maxX + 10 * VIS
+        const lineGap = fs * 1.22
+        const startY = midY - lineGap * 0.35
+        textEl.setAttribute('font-size', fs)
+        textEl.setAttribute('display', 'inline')
+        textEl.innerHTML =
+          '<tspan x="' + x + '" y="' + startY + '">面积 = 底×高</tspan>' +
+          '<tspan x="' + x + '" dy="' + lineGap + '">' + BASE_CM + '×' + hStr + ' = ' + areaStr + ' cm²</tspan>'
+      }
+
+      function render () {
+        const phiB = (demoHActive && showTopFig) ? phiFrozen : phi
+        const gB = geometryAt(phiB, ay0Bottom)
+        paintParallelogram(bottomEls, gB, ay0Bottom, true)
+
+        if (showTopFig) {
+          const gT = topLineMode
+            ? geometryTopLine(hTopFrozen, dXTop, ay0Top)
+            : geometryAt(phiTop, ay0Top)
+          paintParallelogram(topEls, gT, ay0Top, false)
+          figTop.setAttribute('display', 'inline')
+          layoutAreaFormula(lblAreaBottom, gB)
+          layoutAreaFormula(lblAreaTop, gT)
+        } else {
+          figTop.setAttribute('display', 'none')
+          lblAreaBottom.setAttribute('display', 'none')
+          lblAreaTop.setAttribute('display', 'none')
+        }
+
+        const area = BASE_CM * gB.h
+        mHeight.textContent = gB.h.toFixed(1) + ' cm'
+        mArea.textContent = area.toFixed(1) + ' cm²'
+        okFormula.textContent = BASE_CM + ' × ' + gB.h.toFixed(1) + ' = ' + area.toFixed(1) + ' cm²'
+      }
+
+      const k = PX_PER_CM
+      const rPx = SIDE_CM * k
+
+      function setPhiFromD (mx, my) {
+        phi = clamp(Math.atan2(ay0Bottom - my, mx - ax0), PHI_MIN, PHI_MAX)
+        render()
+      }
+
+      function setPhiFromC (mx, my) {
+        const bx = ax0 + BASE_CM * k
+        const by = ay0Bottom
+        let dx = mx - bx
+        let dy = my - by
+        const len = Math.hypot(dx, dy)
+        if (len < 1e-6) return
+        dx /= len
+        dy /= len
+        const Dx = ax0 + dx * rPx
+        const Dy = ay0Bottom + dy * rPx
+        phi = clamp(Math.atan2(ay0Bottom - Dy, Dx - ax0), PHI_MIN, PHI_MAX)
+        render()
+      }
+
+      function onDownD (e) {
+        e.preventDefault()
+        e.stopPropagation()
+        stopDemo()
+        showTopFig = false
+        demoHActive = false
+        topLineMode = false
+        dragKind = 'D'
+        const c = e.touches ? e.touches[0] : e
+        const p = clientToLocal(c.clientX, c.clientY)
+        setPhiFromD(p.x, p.y)
+      }
+
+      function onDownC (e) {
+        e.preventDefault()
+        e.stopPropagation()
+        stopDemo()
+        showTopFig = false
+        demoHActive = false
+        topLineMode = false
+        dragKind = 'C'
+        const c = e.touches ? e.touches[0] : e
+        const p = clientToLocal(c.clientX, c.clientY)
+        setPhiFromC(p.x, p.y)
+      }
+
+      function onMove (e) {
+        if (!dragKind) return
+        const c = e.touches ? e.touches[0] : e
+        const p = clientToLocal(c.clientX, c.clientY)
+        if (dragKind === 'D') setPhiFromD(p.x, p.y)
+        else setPhiFromC(p.x, p.y)
+      }
+
+      function onUp () {
+        dragKind = null
+      }
+
+      handleD.addEventListener('mousedown', onDownD)
+      handleC.addEventListener('mousedown', onDownC)
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+      handleD.addEventListener('touchstart', onDownD, { passive: false })
+      handleC.addEventListener('touchstart', onDownC, { passive: false })
+      window.addEventListener('touchmove', function (e) { if (dragKind) onMove(e) }, { passive: false })
+      window.addEventListener('touchend', onUp)
+
+      document.getElementById('btnReset').addEventListener('click', function () {
+        stopDemo()
+        showTopFig = false
+        demoHActive = false
+        topLineMode = false
+        phi = Math.atan2(5, Math.sqrt(SIDE_CM * SIDE_CM - 5 * 5))
+        phiTop = phi
+        render()
+      })
+
+      function stopDemo () {
+        if (demoTimer) {
+          cancelAnimationFrame(demoTimer)
+          demoTimer = null
+        }
+      }
+
+      document.getElementById('btnDemo').addEventListener('click', function () {
+        stopDemo()
+        showTopFig = false
+        demoHActive = false
+        topLineMode = false
+        demoT0 = performance.now()
+        const dur = 5000
+        const phi0 = phi
+        const amp = 0.55
+        function loop (now) {
+          const t = (now - demoT0) / dur
+          if (t >= 1) {
+            phi = phi0
+            render()
+            demoTimer = null
+            return
+          }
+          const te = t * t * (3 - 2 * t)
+          const s = Math.sin(te * Math.PI)
+          phi = clamp(phi0 + (s - 0.5) * 2 * amp, PHI_MIN, PHI_MAX)
+          render()
+          demoTimer = requestAnimationFrame(loop)
+        }
+        demoTimer = requestAnimationFrame(loop)
+      })
+
+      document.getElementById('btnDemoH').addEventListener('click', function () {
+        stopDemo()
+        phiFrozen = phi
+        showTopFig = true
+
+        if (topLineMode) {
+          const span = 135
+          const dXFrom = dXTop
+          const left = ax0 - span
+          const right = ax0 + span
+          const dXTo = Math.abs(dXFrom - left) >= Math.abs(dXFrom - right) ? left : right
+          const deltaX = dXTo - dXFrom
+          if (Math.abs(deltaX) < 4) {
+            render()
+            return
+          }
+          demoHActive = true
+          demoT0 = performance.now()
+          const dur = 3600
+          function loop2 (now) {
+            const t = Math.min(1, (now - demoT0) / dur)
+            const u = t * t * t * (t * (t * 6 - 15) + 10)
+            dXTop = dXFrom + deltaX * u
+            render()
+            if (t >= 1) {
+              dXTop = dXTo
+              demoHActive = false
+              demoTimer = null
+              render()
+              return
+            }
+            demoTimer = requestAnimationFrame(loop2)
+          }
+          demoTimer = requestAnimationFrame(loop2)
+          return
+        }
+
+        phiTop = phiFrozen
+        const target = clamp(Math.PI - phiFrozen, PHI_MIN, PHI_MAX)
+        const phi0 = phiFrozen
+        const delta = target - phi0
+        if (Math.abs(delta) < 0.05) {
+          phiTop = target
+          const gSkip = geometryAt(phiTop, ay0Top)
+          hTopFrozen = gSkip.h
+          dXTop = gSkip.D.x
+          topLineMode = true
+          demoHActive = false
+          render()
+          return
+        }
+        demoHActive = true
+        demoT0 = performance.now()
+        const dur = 3800
+        function loop (now) {
+          const t = Math.min(1, (now - demoT0) / dur)
+          const u = t * t * t * (t * (t * 6 - 15) + 10)
+          phiTop = phi0 + delta * u
+          render()
+          if (t >= 1) {
+            phiTop = target
+            demoHActive = false
+            demoTimer = null
+            const gEnd = geometryAt(phiTop, ay0Top)
+            hTopFrozen = gEnd.h
+            dXTop = gEnd.D.x
+            topLineMode = true
+            render()
+            return
+          }
+          demoTimer = requestAnimationFrame(loop)
+        }
+        demoTimer = requestAnimationFrame(loop)
+      })
+
+      render()
+    })()
+  </script>
+</body>
+
+</html>
