@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>平行四边形高的画法演示</title>
+  <style>
+    :root {
+      --bg: #e8eedf;
+      --card: #ffffff;
+      --text: #2d4b3a;
+      --text-muted: #5c6f62;
+      --primary: #2d4b3a;
+      --primary-hover: #1f3629;
+      --btn-secondary-bg: #d4ddd0;
+      --btn-secondary-text: #3d5246;
+      --step-border: #c5d4c0;
+      --step-active-bg: #f0f5ec;
+      --step-active-border: #2d4b3a;
+      --shadow: 0 10px 40px rgba(45, 75, 58, 0.08);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      zoom: 1.1;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.55;
+    }
+
+    .page {
+      max-width: min(1420px, 96vw);
+      margin: 0 auto;
+      padding: clamp(16px, 3vw, 28px);
+      min-height: 100vh;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+
+    @media (min-width: 880px) {
+      .layout {
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 22%);
+        gap: 1.75rem;
+      }
+    }
+
+    /* —— 左栏：标题 + 画布 + 控制 —— */
+    .left-col {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .page-title-block {
+      text-align: left;
+    }
+
+    .page-title-block h1 {
+      font-size: clamp(1.25rem, 3.2vw, 1.65rem);
+      font-weight: 700;
+      color: var(--primary);
+      letter-spacing: 0.02em;
+    }
+
+    .page-title-block p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      margin-top: 0.35rem;
+    }
+
+    .stage-wrap {
+      background: var(--card);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      padding: clamp(16px, 3vw, 24px);
+      overflow: hidden;
+      min-height: min(58vh, 540px);
+    }
+
+    .stage-wrap svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      min-height: 380px;
+      max-height: min(74vh, 700px);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+    }
+
+    .btn {
+      appearance: none;
+      border: none;
+      padding: 0.55rem 1rem;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s, opacity 0.2s;
+    }
+
+    .btn:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    .btn-secondary {
+      background: var(--btn-secondary-bg);
+      color: var(--btn-secondary-text);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      filter: brightness(0.97);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* —— 右栏：步骤列表 + 提示 —— */
+    .right-col {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .steps-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .step-card {
+      background: var(--card);
+      border: 2px solid var(--step-border);
+      border-radius: 14px;
+      padding: 0.85rem 1rem;
+      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+
+    .step-card.active {
+      border-color: var(--step-active-border);
+      background: var(--step-active-bg);
+      box-shadow: 0 2px 12px rgba(45, 75, 58, 0.12);
+    }
+
+    .step-card .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.65rem;
+      height: 1.65rem;
+      padding: 0 0.35rem;
+      border-radius: 8px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-right: 0.5rem;
+      vertical-align: middle;
+    }
+
+    .step-card.active .step-num {
+      background: var(--primary);
+    }
+
+    .step-card h3 {
+      display: inline;
+      font-size: 0.98rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .step-card p {
+      margin-top: 0.45rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .tip {
+      background: rgba(255, 255, 255, 0.85);
+      border: 1px solid #cdd8c5;
+      border-radius: 14px;
+      padding: 1rem 1.1rem;
+      font-size: 0.84rem;
+      color: var(--text-muted);
+    }
+
+    .tip .tip-label {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 0.4rem;
+      font-size: 0.88rem;
+    }
+
+    /* SVG */
+    .poly-fill {
+      fill: rgba(45, 75, 58, 0.07);
+      stroke: #2d4b3a;
+      stroke-width: 3;
+    }
+
+    .point-label {
+      font-size: 19px;
+      font-weight: 700;
+      fill: var(--text);
+    }
+
+    .ruler-fill {
+      fill: rgba(100, 160, 220, 0.22);
+      stroke: #3b82c4;
+      stroke-width: 2.5;
+    }
+
+    .height-line {
+      stroke: #d32f2f;
+      stroke-width: 3.2;
+      stroke-linecap: round;
+      stroke-dasharray: 8 9;
+    }
+
+    .right-angle {
+      stroke: #64748b;
+      stroke-width: 2;
+      fill: none;
+    }
+
+    /* 标垂足：垂足 E 左侧（靠 A）略小的红色直角标 */
+    .right-angle-foot-left {
+      stroke: #c62828;
+      stroke-width: 1.75;
+      fill: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="layout">
+      <div class="left-col">
+        <div class="page-title-block">
+          <h1>平行四边形高的画法</h1>
+          <p>使用三角板画高的标准步骤演示</p>
+        </div>
+
+        <div class="stage-wrap" aria-hidden="true">
+          <!-- A(80,270) B(152,115) C(422,115) D(350,270)，E(152,270)；三角板直角边 150×190 -->
+          <svg viewBox="25 70 455 235" xmlns="http://www.w3.org/2000/svg" id="stage" preserveAspectRatio="xMidYMid meet">
+            <!-- 外层：整体略左移；内层：以 viewBox 中心为锚点等比略缩小 -->
+            <g transform="translate(-48, 0)">
+            <g transform="translate(252.5, 187.5) scale(0.85) translate(-252.5, -187.5)">
+            <polygon id="para" class="poly-fill"
+              points="80,270 152,115 422,115 350,270" />
+
+            <text x="62" y="288" class="point-label">A</text>
+            <text x="138" y="102" class="point-label">B</text>
+            <text x="434" y="102" class="point-label">C</text>
+            <text x="338" y="288" class="point-label">D</text>
+
+            <!-- 三角板：直角在 AD 上，底边 150，竖直边 190 -->
+            <g id="ruler" transform="translate(80,270)">
+              <polygon class="ruler-fill" points="0,0 150,0 0,-190" />
+              <line x1="0" y1="0" x2="150" y2="0" stroke="#2563b5" stroke-width="2.2" />
+              <line x1="0" y1="0" x2="0" y2="-190" stroke="#2563b5" stroke-width="2.2" />
+            </g>
+
+            <!-- 三角板直角顶点处的直角标（随平移更新） -->
+            <path id="rightAngleA" class="right-angle" />
+            <line id="heightLine" class="height-line" x1="152" y1="115" x2="152" y2="270"
+              opacity="0" />
+            <!-- 第二条高：BC 中点 (287,115) 向 AD 的垂线，垂足 F(287,270) -->
+            <line id="heightLine2" class="height-line" x1="287" y1="115" x2="287" y2="270"
+              opacity="0" />
+            <text id="labelE" x="132" y="288" class="point-label" opacity="0">E</text>
+            <text id="labelF" x="268" y="288" class="point-label" opacity="0">F</text>
+            <path id="rightAngle" class="right-angle" opacity="0" />
+            <path id="rightAngleLeftRed" class="right-angle-foot-left" opacity="0" />
+            <path id="rightAngleF" class="right-angle" opacity="0" />
+            <path id="rightAngleLeftRedF" class="right-angle-foot-left" opacity="0" />
+            </g>
+              </g>
+            </svg>
+        </div>
+
+        <div class="controls">
+          <button type="button" class="btn btn-secondary" id="btnPrev" title="上一步">← 上一步</button>
+          <button type="button" class="btn btn-primary" id="btnPlay" title="自动播放">▶ 播放</button>
+          <button type="button" class="btn btn-primary" id="btnNext" title="下一步">下一步 →</button>
+          <button type="button" class="btn btn-primary" id="btnReset" title="重置">🔄 重置</button>
+        </div>
+      </div>
+
+      <div class="right-col">
+        <div class="steps-list" id="stepsList" role="list">
+          <div class="step-card active" data-step="0" role="listitem">
+            <div>
+              <span class="step-num">1</span>
+              <h3>边边重合</h3>
+            </div>
+            <p>将三角板的一条直角边与平行四边形的底边 AD 完全重合对齐。</p>
+          </div>
+          <div class="step-card" data-step="1" role="listitem">
+            <div>
+              <span class="step-num">2</span>
+              <h3>边过点</h3>
+            </div>
+            <p>移动三角板，使另一条直角边恰好经过对边上的顶点 B。</p>
+          </div>
+          <div class="step-card" data-step="2" role="listitem">
+            <div>
+              <span class="step-num">3</span>
+              <h3>画高</h3>
+            </div>
+            <p>沿着三角板的直角边，从顶点 B 向底边 AD 画一条垂直线段。</p>
+          </div>
+          <div class="step-card" data-step="3" role="listitem">
+            <div>
+              <span class="step-num">4</span>
+              <h3>标垂足 1</h3>
+            </div>
+            <p>标注垂足 E，并用直角符号标记垂直关系。</p>
+          </div>
+          <div class="step-card" data-step="4" role="listitem">
+            <div>
+              <span class="step-num">5</span>
+              <h3>标垂足 2</h3>
+            </div>
+            <p>将三角板直角边移到 BC 正对位置，向 AD 作垂线，标注垂足 F。</p>
+          </div>
+        </div>
+
+        <div class="tip">
+          <div class="tip-label">💡 提示</div>
+          高是从一个顶点向对边所作的垂线段，垂足必须在对边上。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const STEPS_LEN = 5
+      /** 高的红色虚线样式（与 CSS .height-line 一致，供脚本覆盖内联后恢复） */
+      const HEIGHT_DASH = '8 9'
+      const AD_Y = 270
+      const AX = 80
+      const targetRulerX = 152
+      /** BC 中点正对 AD 上的三角板位置、第二条高的垂足 */
+      const FX = 287
+      const FY = 270
+      const EX = 152
+      const EY = 270
+      const ruler = document.getElementById('ruler')
+      const heightLine = document.getElementById('heightLine')
+      const heightLine2 = document.getElementById('heightLine2')
+      const labelE = document.getElementById('labelE')
+      const labelF = document.getElementById('labelF')
+      const rightAngle = document.getElementById('rightAngle')
+      const rightAngleLeftRed = document.getElementById('rightAngleLeftRed')
+      const rightAngleF = document.getElementById('rightAngleF')
+      const rightAngleLeftRedF = document.getElementById('rightAngleLeftRedF')
+      const rightAngleA = document.getElementById('rightAngleA')
+      const stepCards = document.querySelectorAll('.step-card')
+
+      let rulerX = AX
+      let stepIndex = 0
+      let playing = false
+      let playTimer = null
+      /** 暂停后再次点击「播放」时执行，从中断处继续 */
+      let playResume = null
+
+      /** 三角板直角顶点在 (x, AD_Y)，直角标跟随该点 */
+      function updateRulerCornerRightAngle (x) {
+        const s = 16
+        const ay = AD_Y
+        rightAngleA.setAttribute('d',
+          `M ${x} ${ay - s} L ${x + s} ${ay - s} L ${x + s} ${ay}`
+        )
+      }
+
+      function setRulerTransform (x) {
+        ruler.setAttribute('transform', `translate(${x}, ${AD_Y})`)
+        updateRulerCornerRightAngle(x)
+      }
+
+      function updateRightAnglePath () {
+        const s = 18
+        const ex = EX
+        const ey = EY
+        rightAngle.setAttribute('d',
+          `M ${ex} ${ey - s} L ${ex + s} ${ey - s} L ${ex + s} ${ey}`
+        )
+      }
+
+      /** 垂足 E 左侧（沿 AD 朝 A）略小的红色直角标，尺寸小于右侧灰色标 */
+      function updateRightAngleLeftRedPath () {
+        const sm = 12
+        const ex = EX
+        const ey = EY
+        rightAngleLeftRed.setAttribute('d',
+          `M ${ex - sm} ${ey} L ${ex - sm} ${ey - sm} L ${ex} ${ey - sm}`
+        )
+      }
+
+      function updateRightAngleFPath () {
+        const s = 18
+        const fx = FX
+        const fy = FY
+        rightAngleF.setAttribute('d',
+          `M ${fx} ${fy - s} L ${fx + s} ${fy - s} L ${fx + s} ${fy}`
+        )
+      }
+
+      function updateRightAngleLeftRedFPath () {
+        const sm = 12
+        const fx = FX
+        const fy = FY
+        rightAngleLeftRedF.setAttribute('d',
+          `M ${fx - sm} ${fy} L ${fx - sm} ${fy - sm} L ${fx} ${fy - sm}`
+        )
+      }
+
+      function hideSecondHeightExtras () {
+        heightLine2.style.opacity = '0'
+        heightLine2.style.strokeDasharray = ''
+        heightLine2.style.strokeDashoffset = '0'
+        labelF.style.opacity = '0'
+        rightAngleF.style.opacity = '0'
+        rightAngleLeftRedF.style.opacity = '0'
+      }
+
+      function setActiveStepCard (index) {
+        stepCards.forEach(function (el) {
+          const i = parseInt(el.getAttribute('data-step'), 10)
+          el.classList.toggle('active', i === index)
+        })
+      }
+
+      function applyStep (index, opts) {
+        opts = opts || {}
+        stepIndex = Math.max(0, Math.min(STEPS_LEN - 1, index))
+        setActiveStepCard(stepIndex)
+
+        document.getElementById('btnPrev').disabled = stepIndex <= 0
+        document.getElementById('btnNext').disabled = stepIndex >= STEPS_LEN - 1
+
+        const len = heightLineLength()
+        const len2 = heightLine2Length()
+
+        if (stepIndex === 0) {
+          rulerX = AX
+          setRulerTransform(rulerX)
+          heightLine.style.opacity = '0'
+          heightLine.style.strokeDasharray = ''
+          heightLine.style.strokeDashoffset = '0'
+          labelE.style.opacity = '0'
+          rightAngle.style.opacity = '0'
+          rightAngleLeftRed.style.opacity = '0'
+          rightAngleA.style.opacity = '1'
+          hideSecondHeightExtras()
+        } else if (stepIndex === 1) {
+          rulerX = targetRulerX
+          setRulerTransform(rulerX)
+          heightLine.style.opacity = '0'
+          heightLine.style.strokeDasharray = ''
+          heightLine.style.strokeDashoffset = '0'
+          labelE.style.opacity = '0'
+          rightAngle.style.opacity = '0'
+          rightAngleLeftRed.style.opacity = '0'
+          rightAngleA.style.opacity = '1'
+          hideSecondHeightExtras()
+        } else if (stepIndex === 2) {
+          rulerX = targetRulerX
+          setRulerTransform(rulerX)
+          rightAngleA.style.opacity = '1'
+          heightLine.style.opacity = '1'
+          if (opts.linePending) {
+            heightLine.style.strokeDasharray = HEIGHT_DASH
+            heightLine.style.strokeDashoffset = String(len)
+          } else {
+            heightLine.style.strokeDasharray = HEIGHT_DASH
+            heightLine.style.strokeDashoffset = '0'
+          }
+          labelE.style.opacity = '0'
+          rightAngle.style.opacity = '0'
+          rightAngleLeftRed.style.opacity = '0'
+          hideSecondHeightExtras()
+        } else if (stepIndex === 3) {
+          rulerX = targetRulerX
+          setRulerTransform(rulerX)
+          rightAngleA.style.opacity = '1'
+          heightLine.style.opacity = '1'
+          heightLine.style.strokeDasharray = HEIGHT_DASH
+          heightLine.style.strokeDashoffset = '0'
+          labelE.style.opacity = '1'
+          updateRightAnglePath()
+          updateRightAngleLeftRedPath()
+          rightAngle.style.opacity = '0'
+          rightAngleLeftRed.style.opacity = '1'
+          hideSecondHeightExtras()
+        } else if (stepIndex === 4) {
+          rulerX = FX
+          setRulerTransform(rulerX)
+          heightLine.style.opacity = '1'
+          heightLine.style.strokeDasharray = HEIGHT_DASH
+          heightLine.style.strokeDashoffset = '0'
+          labelE.style.opacity = '1'
+          updateRightAnglePath()
+          updateRightAngleLeftRedPath()
+          rightAngle.style.opacity = '0'
+          rightAngleLeftRed.style.opacity = '1'
+          heightLine2.style.opacity = '1'
+          if (opts.linePending) {
+            heightLine2.style.strokeDasharray = HEIGHT_DASH
+            heightLine2.style.strokeDashoffset = String(len2)
+            rightAngleA.style.opacity = '1'
+            labelF.style.opacity = '0'
+            rightAngleF.style.opacity = '0'
+            rightAngleLeftRedF.style.opacity = '0'
+          } else {
+            heightLine2.style.strokeDasharray = HEIGHT_DASH
+            heightLine2.style.strokeDashoffset = '0'
+            rightAngleA.style.opacity = '1'
+            labelF.style.opacity = '1'
+            updateRightAngleFPath()
+            updateRightAngleLeftRedFPath()
+            rightAngleF.style.opacity = '0'
+            rightAngleLeftRedF.style.opacity = '1'
+          }
+        }
+      }
+
+      function animateRulerSlide (fromX, toX, durationMs, done) {
+        const t0 = performance.now()
+        const segTotal = toX - fromX
+        function frame (now) {
+          if (!playing) {
+            playResume = function () {
+              const distLeft = toX - rulerX
+              if (Math.abs(distLeft) < 0.5) {
+                rulerX = toX
+                setRulerTransform(rulerX)
+                playResume = null
+                done && done()
+                return
+              }
+              const frac = Math.abs((toX - rulerX) / (Math.abs(segTotal) > 1e-6 ? segTotal : 1))
+              animateRulerSlide(rulerX, toX, durationMs * Math.max(0.05, frac), done)
+            }
+            return
+          }
+          const t = Math.min(1, (now - t0) / durationMs)
+          const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+          rulerX = fromX + (toX - fromX) * ease
+          setRulerTransform(rulerX)
+          if (t < 1) requestAnimationFrame(frame)
+          else {
+            rulerX = toX
+            setRulerTransform(rulerX)
+            playResume = null
+            done && done()
+          }
+        }
+        requestAnimationFrame(frame)
+      }
+
+      function heightLineLength () {
+        try {
+          return heightLine.getTotalLength()
+        } catch (e) {
+          return 155
+        }
+      }
+
+      function heightLine2Length () {
+        try {
+          return heightLine2.getTotalLength()
+        } catch (e) {
+          return 155
+        }
+      }
+
+      function animateHeightDraw (done) {
+        const len = heightLineLength()
+        heightLine.style.opacity = '1'
+        heightLine.style.strokeDasharray = HEIGHT_DASH
+        let fromOff = len
+        const parsed = parseFloat(heightLine.style.strokeDashoffset)
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= len) fromOff = parsed
+        else heightLine.style.strokeDashoffset = String(len)
+        heightLine.style.strokeDashoffset = String(fromOff)
+        if (fromOff <= 0.5) {
+          heightLine.style.strokeDashoffset = '0'
+          heightLine.style.strokeDasharray = HEIGHT_DASH
+          playResume = null
+          done && done()
+          return
+        }
+        const dur = 900 * (fromOff / len)
+        const t0 = performance.now()
+        function frame (now) {
+          if (!playing) {
+            playResume = function () { animateHeightDraw(done) }
+            return
+          }
+          const t = dur >= 1e-6 ? Math.min(1, (now - t0) / dur) : 1
+          heightLine.style.strokeDashoffset = String(fromOff * (1 - t))
+          if (t < 1) requestAnimationFrame(frame)
+          else {
+            heightLine.style.strokeDashoffset = '0'
+            heightLine.style.strokeDasharray = HEIGHT_DASH
+            playResume = null
+            done && done()
+          }
+        }
+        requestAnimationFrame(frame)
+      }
+
+      function animateHeightDraw2 (done) {
+        const len2 = heightLine2Length()
+        heightLine2.style.opacity = '1'
+        heightLine2.style.strokeDasharray = HEIGHT_DASH
+        let fromOff = len2
+        const parsed = parseFloat(heightLine2.style.strokeDashoffset)
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= len2) fromOff = parsed
+        else heightLine2.style.strokeDashoffset = String(len2)
+        heightLine2.style.strokeDashoffset = String(fromOff)
+        if (fromOff <= 0.5) {
+          heightLine2.style.strokeDashoffset = '0'
+          heightLine2.style.strokeDasharray = HEIGHT_DASH
+          playResume = null
+          done && done()
+          return
+        }
+        const dur = 900 * (fromOff / len2)
+        const t0 = performance.now()
+        function frame (now) {
+          if (!playing) {
+            playResume = function () { animateHeightDraw2(done) }
+            return
+          }
+          const t = dur >= 1e-6 ? Math.min(1, (now - t0) / dur) : 1
+          heightLine2.style.strokeDashoffset = String(fromOff * (1 - t))
+          if (t < 1) requestAnimationFrame(frame)
+          else {
+            heightLine2.style.strokeDashoffset = '0'
+            heightLine2.style.strokeDasharray = HEIGHT_DASH
+            playResume = null
+            done && done()
+          }
+        }
+        requestAnimationFrame(frame)
+      }
+
+      function runPlaySequence () {
+        if (playing) return
+        playResume = null
+        playing = true
+        document.getElementById('btnPlay').textContent = '⏸ 暂停'
+        clearTimeout(playTimer)
+
+        function wait (ms, fn) {
+          const t0 = performance.now()
+          playTimer = setTimeout(function () {
+            if (!playing) return
+            playResume = null
+            fn()
+          }, ms)
+          playResume = function () {
+            clearTimeout(playTimer)
+            const elapsed = performance.now() - t0
+            const remaining = Math.max(0, ms - elapsed)
+            playTimer = setTimeout(function () {
+              if (!playing) return
+              playResume = null
+              fn()
+            }, remaining)
+          }
+        }
+
+        applyStep(0)
+        wait(500, function () {
+          animateRulerSlide(AX, targetRulerX, 1000, function () {
+            applyStep(1)
+            wait(900, function () {
+              applyStep(2, { linePending: true })
+              animateHeightDraw(function () {
+                applyStep(2)
+                wait(1200, function () {
+                  applyStep(3)
+                  wait(1000, function () {
+                    rightAngleA.style.opacity = '1'
+                    animateRulerSlide(targetRulerX, FX, 1400, function () {
+                      applyStep(4, { linePending: true })
+                      animateHeightDraw2(function () {
+                        applyStep(4)
+                        stopPlay()
+                      })
+                    })
+                  })
+                })
+              })
+            })
+          })
+        })
+      }
+
+      function stopPlay () {
+        playing = false
+        clearTimeout(playTimer)
+        document.getElementById('btnPlay').textContent = '▶ 播放'
+      }
+
+      document.getElementById('btnPrev').addEventListener('click', function () {
+        stopPlay()
+        playResume = null
+        applyStep(stepIndex - 1)
+      })
+
+      document.getElementById('btnNext').addEventListener('click', function () {
+        stopPlay()
+        playResume = null
+        applyStep(stepIndex + 1)
+      })
+
+      document.getElementById('btnReset').addEventListener('click', function () {
+        stopPlay()
+        playResume = null
+        applyStep(0)
+      })
+
+      document.getElementById('btnPlay').addEventListener('click', function () {
+        if (playing) {
+          stopPlay()
+          return
+        }
+        if (playResume) {
+          playing = true
+          document.getElementById('btnPlay').textContent = '⏸ 暂停'
+          playResume()
+          return
+        }
+        runPlaySequence()
+      })
+
+      updateRightAnglePath()
+      updateRightAngleLeftRedPath()
+      updateRightAngleFPath()
+      updateRightAngleLeftRedFPath()
+      setRulerTransform(rulerX)
+      applyStep(0)
+    })()
+  </script>
+</body>
+
+</html>
