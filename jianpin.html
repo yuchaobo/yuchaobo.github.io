@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>绘图区</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: #e8eef5;
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0;
+    }
+
+    .wrap {
+      width: 95vw;
+      height: 95vh;
+      max-width: 100%;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(30, 60, 90, 0.1);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .plot-wrap {
+      flex: 1;
+      min-height: 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 0;
+      background: #f8fafc;
+      padding: 16px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .plot-wrap svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .plot-wrap svg.is-cut {
+      cursor: default;
+    }
+
+    .user-stroke {
+      fill: none;
+      stroke: #dc2626;
+      stroke-width: 2.5;
+      stroke-dasharray: 8 6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .para-yellow {
+      fill: #fbbf24;
+      stroke: #d97706;
+      stroke-width: 2;
+    }
+
+    .right-angle-marker {
+      fill: none;
+      stroke: #dc2626;
+      stroke-width: 2;
+      pointer-events: none;
+    }
+
+    .cut-toolbar {
+      flex-shrink: 0;
+      padding: 10px 16px 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      border-top: 1px solid #e2e8f0;
+      background: #fff;
+    }
+
+    .btn-reset {
+      padding: 0.45rem 0.95rem;
+      font-size: 0.95rem;
+      color: #475569;
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .btn-reset:hover {
+      background: #f1f5f9;
+    }
+
+    .scissors-handle {
+      min-width: 88px;
+      padding: 0.45rem 1rem;
+      font-size: 1.85rem;
+      line-height: 1;
+      font-weight: 600;
+      color: #475569;
+      background: transparent;
+      border: none;
+      border-radius: 10px;
+      cursor: grab;
+      box-shadow: none;
+      user-select: none;
+      touch-action: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .scissors-handle:hover:not(.is-disabled):not(.dragging) {
+      opacity: 0.85;
+    }
+
+    .scissors-handle.dragging {
+      cursor: grabbing;
+      z-index: 10000;
+      box-shadow: none;
+    }
+
+    /* 拖入上方绘图区：略右移，减轻挡住高线右侧的「高」字 */
+    .scissors-handle.dragging.dragging-over-plot {
+      transform: translate(36px, 0) scale(8) rotate(-90deg);
+      transform-origin: center center;
+      opacity: 0.88;
+    }
+
+    .scissors-handle.is-disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .para-piece {
+      fill: #fbbf24;
+      stroke: #d97706;
+      stroke-width: 2;
+    }
+
+    .para-piece-group {
+      cursor: grab;
+    }
+
+    .para-piece-group.is-dragging {
+      cursor: grabbing;
+    }
+
+    .para-piece.para-piece--selected {
+      stroke: #92400e;
+      stroke-width: 2.5;
+    }
+
+    .geo-labels-layer {
+      pointer-events: none;
+    }
+
+    .left-piece-drag-arrows {
+      pointer-events: none;
+    }
+
+    /* 挂在 svg 根上，箭尾用全局坐标，不随左块 translate 移动 */
+    .left-piece-drag-arrows-overlay {
+      pointer-events: none;
+    }
+
+    .left-drag-arrow-line {
+      stroke: #dc2626;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+    }
+
+    .left-drag-arrow-head {
+      fill: #dc2626;
+    }
+
+    .geo-label {
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      font-size: 18px;
+      fill: #334155;
+      user-select: none;
+    }
+
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="plot-wrap" id="plotWrap" aria-label="绘图区域">
+      <svg id="drawCanvas" viewBox="0 0 640 400" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+        <g id="paraLayer">
+          <polygon id="paraWhole" class="para-yellow"
+            points="97,290 433,290 523,110 187,110" />
+        </g>
+        <!-- 用户绘制的红色虚线（在上层） -->
+        <g id="userDraw" class="user-draw-layer"></g>
+        <g id="geoLabelsLayer" class="geo-labels-layer"></g>
+      </svg>
+    </div>
+    <div class="cut-toolbar">
+      <button type="button" class="scissors-handle" id="scissorsHandle" title="拖到红色高线附近松手即可剪开"
+        aria-label="剪刀：拖到高线附近松手剪开">✂</button>
+      <button type="button" class="btn-reset" id="btnReset" title="恢复完整图形并重新使用剪刀">重置</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const NS = 'http://www.w3.org/2000/svg'
+      const svg = document.getElementById('drawCanvas')
+      const plotWrap = document.getElementById('plotWrap')
+      const userDraw = document.getElementById('userDraw')
+      const geoLabelsLayer = document.getElementById('geoLabelsLayer')
+      const paraLayer = document.getElementById('paraLayer')
+      const scissorsHandle = document.getElementById('scissorsHandle')
+      const btnReset = document.getElementById('btnReset')
+      /** 初始完整平行四边形（与 HTML 中 paraWhole 一致） */
+      const PARA_WHOLE_POINTS = '97,290 433,290 523,110 187,110'
+      /** 最后一次成功画出的「高」的 x；剪开时沿此线 */
+      let lastCutLineX = 310
+      /** 最后一次成功修正后的高线段 { x, yLo, yHi }，剪开后画在右侧块上 */
+      let lastHeightSeg = null
+      let isCut = false
+      /** 剪开后左右块组引用与水平拖动偏移（viewBox 单位） */
+      let pieceGroupL = null
+      let pieceGroupR = null
+      let pieceUserDxL = 0
+      let pieceUserDxR = 0
+      let pieceDrag = null
+      let drawing = false
+      let currentPath = null
+      let pathD = ''
+      /** 一次拖拽的起点 / 终点（用于松手后把「高」修正为直线） */
+      let startPt = null
+      let lastPt = null
+      const MIN_STROKE_LEN = 3
+      /** 剪开后左右块水平错开，中间留缝（viewBox 单位） */
+      const SPLIT_GAP = 14
+      /** 与下方 polygon 顶点顺序一致，用于竖线与边求交、限制高不超出形内 */
+      const PARA_VERTICES = [
+        { x: 97, y: 290 },
+        { x: 433, y: 290 },
+        { x: 523, y: 110 },
+        { x: 187, y: 110 }
+      ]
+      /**
+       * 沿整条竖直高剪开时，与顶边、底边都相交的 x 范围
+       */
+      const CUT_LINE_X_MIN = 187
+      const CUT_LINE_X_MAX = 433
+      /** 底边 y（与 PARA_VERTICES 底边一致） */
+      const BOTTOM_EDGE_Y = PARA_VERTICES[0].y
+      /** 「底」在底边中点下方 */
+      const BOTTOM_LABEL_Y = BOTTOM_EDGE_Y + 22
+      const BOTTOM_LABEL_X = (PARA_VERTICES[0].x + PARA_VERTICES[1].x) / 2
+      /** 「高」相对高线向右偏移（viewBox 单位，text-anchor:start） */
+      const HEIGHT_LABEL_OFFSET_X = 32
+      function clampCutLineX (x) {
+        return Math.min(Math.max(x, CUT_LINE_X_MIN), CUT_LINE_X_MAX)
+      }
+      /** 左上顶点（与 PARA_VERTICES[3] 一致），起点靠近时吸附到此点 */
+      const VERTEX_TOP_LEFT = PARA_VERTICES[3]
+      const SNAP_VERTEX_RADIUS = 32
+
+      /** 竖直线 x = x0 与平行四边形边界的交点 y，取最小/最大即夹在上下边之间的范围 */
+      function verticalSpanInParallelogram (x0) {
+        const ys = []
+        const n = PARA_VERTICES.length
+        for (let i = 0; i < n; i++) {
+          const ax = PARA_VERTICES[i].x
+          const ay = PARA_VERTICES[i].y
+          const bx = PARA_VERTICES[(i + 1) % n].x
+          const by = PARA_VERTICES[(i + 1) % n].y
+          const minx = Math.min(ax, bx)
+          const maxx = Math.max(ax, bx)
+          if (Math.abs(ax - bx) < 1e-9) {
+            if (Math.abs(x0 - ax) <= 1e-9) {
+              ys.push(ay, by)
+            }
+            continue
+          }
+          if (Math.abs(ay - by) < 1e-9) {
+            if (x0 >= minx - 1e-9 && x0 <= maxx + 1e-9) ys.push(ay)
+            continue
+          }
+          const t = (x0 - ax) / (bx - ax)
+          if (t >= -1e-9 && t <= 1 + 1e-9) {
+            ys.push(ay + t * (by - ay))
+          }
+        }
+        if (ys.length < 2) return null
+        return {
+          yMin: Math.min.apply(null, ys),
+          yMax: Math.max.apply(null, ys)
+        }
+      }
+
+      /** 仅底边垂足处：直角标缺口朝向形内（向上） */
+      function rightAnglePathBottomAt (fx) {
+        const s = 11
+        const fy = 290
+        return 'M ' + (fx + s) + ' ' + fy + ' L ' + (fx + s) + ' ' + (fy - s) + ' L ' + fx + ' ' + (fy - s)
+      }
+
+      /**
+       * 直角标只画在底边上（与高、底边夹角处）。
+       */
+      function appendRightAngleMarker (xMid, yLo, yHi) {
+        if (!(yLo <= 290 && yHi >= 290 && xMid >= 97 && xMid <= 433)) return
+        const fx = Math.min(Math.max(xMid, 97), 433)
+        const p = document.createElementNS(NS, 'path')
+        p.setAttribute('class', 'right-angle-marker')
+        p.setAttribute('d', rightAnglePathBottomAt(fx))
+        userDraw.appendChild(p)
+      }
+
+      function removeHeightLabel () {
+        const t = document.getElementById('labelHeight')
+        if (t && t.parentNode) {
+          t.parentNode.removeChild(t)
+        }
+      }
+
+      function setHeightLabel (parent, x, yLo, yHi) {
+        removeHeightLabel()
+        if (!parent) return
+        const yMid = (yLo + yHi) / 2
+        const text = document.createElementNS(NS, 'text')
+        text.setAttribute('id', 'labelHeight')
+        text.setAttribute('class', 'geo-label')
+        text.setAttribute('x', String(x + HEIGHT_LABEL_OFFSET_X))
+        text.setAttribute('y', String(yMid))
+        text.setAttribute('text-anchor', 'start')
+        text.setAttribute('dominant-baseline', 'middle')
+        text.textContent = '高'
+        parent.appendChild(text)
+      }
+
+      function ensureBottomLabel () {
+        if (document.getElementById('labelBottom') || !geoLabelsLayer) return
+        const text = document.createElementNS(NS, 'text')
+        text.setAttribute('id', 'labelBottom')
+        text.setAttribute('class', 'geo-label')
+        text.setAttribute('x', String(BOTTOM_LABEL_X))
+        text.setAttribute('y', String(BOTTOM_LABEL_Y))
+        text.setAttribute('text-anchor', 'middle')
+        text.setAttribute('dominant-baseline', 'hanging')
+        text.textContent = '底'
+        geoLabelsLayer.appendChild(text)
+      }
+
+      function clearGeoLabelsLayer () {
+        if (!geoLabelsLayer) return
+        while (geoLabelsLayer.firstChild) {
+          geoLabelsLayer.removeChild(geoLabelsLayer.firstChild)
+        }
+      }
+
+      function svgDxPerClientPx () {
+        const vb = svg.viewBox.baseVal
+        const w = svg.getBoundingClientRect().width
+        if (w < 1e-6) return 1
+        return vb.width / w
+      }
+
+      function applyPieceTransforms () {
+        if (!pieceGroupL || !pieceGroupR) return
+        const h = SPLIT_GAP / 2
+        pieceGroupL.setAttribute(
+          'transform',
+          'translate(' + (-h + pieceUserDxL) + ', 0)'
+        )
+        pieceGroupR.setAttribute(
+          'transform',
+          'translate(' + (h + pieceUserDxR) + ', 0)'
+        )
+      }
+
+      function removeLeftDragArrows () {
+        const g = svg.getElementById('leftPieceArrowsOverlay')
+        if (g && g.parentNode) {
+          g.parentNode.removeChild(g)
+        }
+      }
+
+      function getLeftPieceArrowCenterX () {
+        return (PARA_VERTICES[0].x + clampCutLineX(lastCutLineX)) / 2
+      }
+
+      /** 箭头杆：长度 = 基准 + 有符号位移×系数；向右（dSvg>0）变长，向左（dSvg<0）变短，方向始终朝 +x */
+      const ARROW_HEAD_INNER_X = 6
+      const ARROW_SHAFT_MIN = 12
+      const ARROW_SHAFT_MAX = 400
+      const ARROW_SHAFT_FLOOR = 4
+      const ARROW_SHAFT_PER_DELTA = 0.9
+      /** 判定「先向左 / 先向右」的位移门限（viewBox）；先向左则本段手势不画箭头 */
+      const ARROW_FIRST_MOVE_EPS = 2
+
+      function computeLeftArrowShaft (signedDelta) {
+        const d = typeof signedDelta === 'number' ? signedDelta : 0
+        const raw = ARROW_SHAFT_MIN + d * ARROW_SHAFT_PER_DELTA
+        const shaftLen = Math.min(
+          ARROW_SHAFT_MAX,
+          Math.max(ARROW_SHAFT_FLOOR, raw)
+        )
+        return {
+          x1: ARROW_HEAD_INNER_X - shaftLen,
+          x2: ARROW_HEAD_INNER_X
+        }
+      }
+
+      /**
+       * 箭尾固定在全局 SVG 坐标（按下时记录），不随左块移动。
+       * signedDelta：本次手势内水平位移 dSvg（viewBox），向右为正、向左为负。
+       */
+      function createLeftDragArrows (signedDelta) {
+        removeLeftDragArrows()
+        if (pieceDrag == null || pieceDrag.tailFixedGlobalX == null) return
+        const tailX = pieceDrag.tailFixedGlobalX
+        const ys = [135, 200, 265]
+        const se = computeLeftArrowShaft(
+          typeof signedDelta === 'number' ? signedDelta : 0
+        )
+        const lineLen = se.x2 - se.x1
+        const root = document.createElementNS(NS, 'g')
+        root.setAttribute('id', 'leftPieceArrowsOverlay')
+        root.setAttribute(
+          'class',
+          'left-piece-drag-arrows left-piece-drag-arrows-overlay'
+        )
+        root.setAttribute('pointer-events', 'none')
+        ys.forEach(function (y) {
+          const unit = document.createElementNS(NS, 'g')
+          unit.setAttribute('class', 'left-drag-arrow-unit')
+          unit.setAttribute(
+            'transform',
+            'translate(' + tailX + ', ' + y + ')'
+          )
+          const line = document.createElementNS(NS, 'line')
+          line.setAttribute('x1', '0')
+          line.setAttribute('y1', '0')
+          line.setAttribute('x2', String(lineLen))
+          line.setAttribute('y2', '0')
+          line.setAttribute('class', 'left-drag-arrow-line')
+          const head = document.createElementNS(NS, 'path')
+          head.setAttribute('transform', 'translate(' + lineLen + ', 0)')
+          head.setAttribute('d', 'M 0 -5 L 10 0 L 0 5 Z')
+          head.setAttribute('class', 'left-drag-arrow-head')
+          unit.appendChild(line)
+          unit.appendChild(head)
+          root.appendChild(unit)
+        })
+        svg.insertBefore(root, userDraw)
+      }
+
+      function updateLeftDragArrowGeometry (signedDelta) {
+        const root = svg.getElementById('leftPieceArrowsOverlay')
+        if (!root || pieceDrag == null || pieceDrag.tailFixedGlobalX == null) {
+          return
+        }
+        const tailX = pieceDrag.tailFixedGlobalX
+        const ys = [135, 200, 265]
+        const se = computeLeftArrowShaft(signedDelta)
+        const lineLen = se.x2 - se.x1
+        const units = root.querySelectorAll('.left-drag-arrow-unit')
+        for (let i = 0; i < units.length; i++) {
+          units[i].setAttribute(
+            'transform',
+            'translate(' + tailX + ', ' + ys[i] + ')'
+          )
+          const line = units[i].querySelector('.left-drag-arrow-line')
+          const head = units[i].querySelector('.left-drag-arrow-head')
+          if (line) {
+            line.setAttribute('x2', String(lineLen))
+          }
+          if (head) {
+            head.setAttribute('transform', 'translate(' + lineLen + ', 0)')
+          }
+        }
+      }
+
+      function clearPieceSelection () {
+        const pl = pieceGroupL && pieceGroupL.querySelector('.para-piece')
+        const pr = pieceGroupR && pieceGroupR.querySelector('.para-piece')
+        if (pl) pl.classList.remove('para-piece--selected')
+        if (pr) pr.classList.remove('para-piece--selected')
+      }
+
+      function selectPiecePolygon (g) {
+        clearPieceSelection()
+        const poly = g.querySelector('.para-piece')
+        if (poly) poly.classList.add('para-piece--selected')
+      }
+
+      function onPiecePointerDown (e) {
+        if (!isCut) return
+        if (e.pointerType === 'mouse' && e.button !== 0) return
+        const g = e.currentTarget
+        if (!g || g.tagName !== 'g') return
+        e.preventDefault()
+        e.stopPropagation()
+        const side = g.getAttribute('data-side')
+        const originDx = side === 'left' ? pieceUserDxL : pieceUserDxR
+        const pd = {
+          side: side || 'left',
+          originClientX: e.clientX,
+          originDx: originDx,
+          g: g
+        }
+        if (side === 'left') {
+          pd.lastClientX = e.clientX
+          pd.arrowFirstMove = 'undecided'
+          const h = SPLIT_GAP / 2
+          const se0 = computeLeftArrowShaft(0)
+          pd.tailFixedGlobalX =
+            getLeftPieceArrowCenterX() + se0.x1 + (-h + pieceUserDxL)
+        }
+        pieceDrag = pd
+        g.classList.add('is-dragging')
+        selectPiecePolygon(g)
+        if (paraLayer && g.parentNode === paraLayer) {
+          paraLayer.appendChild(g)
+        }
+        try {
+          g.setPointerCapture(e.pointerId)
+        } catch (err) { /* ignore */ }
+      }
+
+      function onPiecePointerMove (e) {
+        if (!pieceDrag) return
+        e.preventDefault()
+        const scale = svgDxPerClientPx()
+        const dClient = e.clientX - pieceDrag.originClientX
+        const dSvg = dClient * scale
+        const next = pieceDrag.originDx + dSvg
+        if (pieceDrag.side === 'left') {
+          pieceUserDxL = next
+          pieceDrag.lastClientX = e.clientX
+          if (pieceDrag.arrowFirstMove === 'undecided') {
+            if (dSvg > ARROW_FIRST_MOVE_EPS) {
+              pieceDrag.arrowFirstMove = 'right'
+            } else if (dSvg < -ARROW_FIRST_MOVE_EPS) {
+              pieceDrag.arrowFirstMove = 'left'
+            }
+          }
+          if (pieceDrag.arrowFirstMove === 'left') {
+            removeLeftDragArrows()
+          } else if (pieceDrag.arrowFirstMove === 'right') {
+            if (!svg.getElementById('leftPieceArrowsOverlay')) {
+              createLeftDragArrows(dSvg)
+            } else {
+              updateLeftDragArrowGeometry(dSvg)
+            }
+          }
+        } else {
+          pieceUserDxR = next
+        }
+        applyPieceTransforms()
+      }
+
+      function onPiecePointerUp (e) {
+        if (!pieceDrag) return
+        const g = pieceDrag.g
+        removeLeftDragArrows()
+        pieceDrag = null
+        g.classList.remove('is-dragging')
+        try {
+          if (e.pointerId != null) g.releasePointerCapture(e.pointerId)
+        } catch (err) { /* ignore */ }
+      }
+
+      function resetDemo () {
+        while (userDraw.firstChild) {
+          userDraw.removeChild(userDraw.firstChild)
+        }
+        while (paraLayer.firstChild) {
+          paraLayer.removeChild(paraLayer.firstChild)
+        }
+        const whole = document.createElementNS(NS, 'polygon')
+        whole.setAttribute('id', 'paraWhole')
+        whole.setAttribute('class', 'para-yellow')
+        whole.setAttribute('points', PARA_WHOLE_POINTS)
+        paraLayer.appendChild(whole)
+
+        lastCutLineX = 310
+        lastHeightSeg = null
+        isCut = false
+        pieceGroupL = null
+        pieceGroupR = null
+        pieceUserDxL = 0
+        pieceUserDxR = 0
+        pieceDrag = null
+        drawing = false
+        currentPath = null
+        pathD = ''
+        startPt = null
+        lastPt = null
+
+        scissorsDragging = false
+        scissorsDragMoved = false
+        resetScissorsHandleStyles()
+        scissorsHandle.classList.remove('is-disabled')
+        scissorsHandle.removeAttribute('aria-disabled')
+
+        svg.classList.remove('is-cut')
+
+        clearGeoLabelsLayer()
+        ensureBottomLabel()
+      }
+
+      function toSvgPoint (e) {
+        const pt = svg.createSVGPoint()
+        const x = e.clientX != null ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0)
+        const y = e.clientY != null ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0)
+        pt.x = x
+        pt.y = y
+        return pt.matrixTransform(svg.getScreenCTM().inverse())
+      }
+
+      function toSvgPointXY (clientX, clientY) {
+        const pt = svg.createSVGPoint()
+        pt.x = clientX
+        pt.y = clientY
+        return pt.matrixTransform(svg.getScreenCTM().inverse())
+      }
+
+      /** 松手位置与竖直「高」足够近（viewBox 单位）则触发剪开 */
+      const NEAR_HEIGHT_LINE_X = 26
+      const NEAR_HEIGHT_LINE_Y_PAD = 14
+
+      function isNearHeightLine (clientX, clientY) {
+        const p = toSvgPointXY(clientX, clientY)
+        if (Math.abs(p.x - lastCutLineX) > NEAR_HEIGHT_LINE_X) return false
+        const span = verticalSpanInParallelogram(lastCutLineX)
+        if (!span) return false
+        return p.y >= span.yMin - NEAR_HEIGHT_LINE_Y_PAD && p.y <= span.yMax + NEAR_HEIGHT_LINE_Y_PAD
+      }
+
+      let scissorsDragging = false
+      let scissorsDragMoved = false
+      let scissorsOffsetX = 0
+      let scissorsOffsetY = 0
+
+      function resetScissorsHandleStyles () {
+        scissorsHandle.style.position = ''
+        scissorsHandle.style.left = ''
+        scissorsHandle.style.top = ''
+        scissorsHandle.style.width = ''
+        scissorsHandle.style.height = ''
+        scissorsHandle.classList.remove('dragging', 'dragging-over-plot')
+      }
+
+      function isClientInPlotWrap (clientX, clientY) {
+        if (!plotWrap) return false
+        const r = plotWrap.getBoundingClientRect()
+        return (
+          clientX >= r.left &&
+          clientX <= r.right &&
+          clientY >= r.top &&
+          clientY <= r.bottom
+        )
+      }
+
+      function updateScissorsOverPlotState (clientX, clientY) {
+        if (!scissorsDragging) return
+        if (isClientInPlotWrap(clientX, clientY)) {
+          scissorsHandle.classList.add('dragging-over-plot')
+        } else {
+          scissorsHandle.classList.remove('dragging-over-plot')
+        }
+      }
+
+      function onScissorsPointerDown (e) {
+        if (isCut || scissorsHandle.classList.contains('is-disabled')) return
+        if (e.pointerType === 'mouse' && e.button !== 0) return
+        e.preventDefault()
+        e.stopPropagation()
+        scissorsDragging = true
+        scissorsDragMoved = false
+        const r = scissorsHandle.getBoundingClientRect()
+        scissorsOffsetX = e.clientX - r.left
+        scissorsOffsetY = e.clientY - r.top
+        scissorsHandle.style.position = 'fixed'
+        scissorsHandle.style.width = r.width + 'px'
+        scissorsHandle.style.height = r.height + 'px'
+        scissorsHandle.style.left = (e.clientX - scissorsOffsetX) + 'px'
+        scissorsHandle.style.top = (e.clientY - scissorsOffsetY) + 'px'
+        scissorsHandle.classList.add('dragging')
+        updateScissorsOverPlotState(e.clientX, e.clientY)
+        try {
+          scissorsHandle.setPointerCapture(e.pointerId)
+        } catch (err) { /* ignore */ }
+      }
+
+      function onScissorsPointerMove (e) {
+        if (!scissorsDragging) return
+        e.preventDefault()
+        scissorsDragMoved = true
+        scissorsHandle.style.left = (e.clientX - scissorsOffsetX) + 'px'
+        scissorsHandle.style.top = (e.clientY - scissorsOffsetY) + 'px'
+        updateScissorsOverPlotState(e.clientX, e.clientY)
+      }
+
+      function onScissorsPointerUp (e) {
+        if (!scissorsDragging) return
+        e.preventDefault()
+        const moved = scissorsDragMoved
+        const ok = moved && isNearHeightLine(e.clientX, e.clientY)
+        scissorsDragging = false
+        scissorsDragMoved = false
+        resetScissorsHandleStyles()
+        try {
+          if (e.pointerId != null) scissorsHandle.releasePointerCapture(e.pointerId)
+        } catch (err) { /* ignore */ }
+        if (ok && !isCut) {
+          runScissorsCutAnimation()
+        }
+      }
+
+      function beginStroke (e) {
+        if (isCut) return
+        if (scissorsDragging) return
+        if (e.pointerType === 'mouse' && e.button !== 0) return
+        e.preventDefault()
+        drawing = true
+        try {
+          svg.setPointerCapture(e.pointerId)
+        } catch (err) { /* ignore */ }
+        const p = toSvgPoint(e)
+        startPt = { x: p.x, y: p.y }
+        lastPt = { x: p.x, y: p.y }
+        pathD = 'M ' + p.x + ' ' + p.y
+        currentPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        currentPath.setAttribute('class', 'user-stroke')
+        currentPath.setAttribute('d', pathD)
+        userDraw.appendChild(currentPath)
+      }
+
+      function continueStroke (e) {
+        if (scissorsDragging) return
+        if (!drawing || !currentPath) return
+        e.preventDefault()
+        const p = toSvgPoint(e)
+        lastPt = { x: p.x, y: p.y }
+        pathD += ' L ' + p.x + ' ' + p.y
+        currentPath.setAttribute('d', pathD)
+      }
+
+      /**
+       * 将手绘修正为直线「高」：底边水平 → 竖直线；再裁剪到平行四边形内（不超出上下边及斜边范围）。
+       */
+      function snapHeightToStraightLine () {
+        if (!currentPath || !startPt || !lastPt) return
+        const len = Math.hypot(lastPt.x - startPt.x, lastPt.y - startPt.y)
+        if (len < MIN_STROKE_LEN) {
+          try {
+            userDraw.removeChild(currentPath)
+          } catch (err) { /* ignore */ }
+          removeHeightLabel()
+          return
+        }
+
+        const distStartToTopLeft = Math.hypot(
+          startPt.x - VERTEX_TOP_LEFT.x,
+          startPt.y - VERTEX_TOP_LEFT.y
+        )
+        if (distStartToTopLeft <= SNAP_VERTEX_RADIUS) {
+          const xMid = VERTEX_TOP_LEFT.x
+          const span = verticalSpanInParallelogram(xMid)
+          if (!span) {
+            try {
+              userDraw.removeChild(currentPath)
+            } catch (err) { /* ignore */ }
+            removeHeightLabel()
+            return
+          }
+          const yStart = VERTEX_TOP_LEFT.y
+          let yEnd = Math.min(
+            Math.max(lastPt.y, yStart + MIN_STROKE_LEN),
+            span.yMax
+          )
+          yEnd = Math.max(yEnd, span.yMin)
+          if (yEnd <= yStart + 1e-9 || yEnd > span.yMax + 1e-9) {
+            try {
+              userDraw.removeChild(currentPath)
+            } catch (err) { /* ignore */ }
+            removeHeightLabel()
+            return
+          }
+          const d = 'M ' + xMid + ' ' + yStart + ' L ' + xMid + ' ' + yEnd
+          currentPath.setAttribute('d', d)
+          lastCutLineX = xMid
+          lastHeightSeg = {
+            x: xMid,
+            yLo: Math.min(yStart, yEnd),
+            yHi: Math.max(yStart, yEnd)
+          }
+          appendRightAngleMarker(xMid, lastHeightSeg.yLo, lastHeightSeg.yHi)
+          setHeightLabel(
+            geoLabelsLayer,
+            xMid,
+            lastHeightSeg.yLo,
+            lastHeightSeg.yHi
+          )
+          return
+        }
+
+        const xMid = (startPt.x + lastPt.x) / 2
+        const span = verticalSpanInParallelogram(xMid)
+        if (!span) {
+          try {
+            userDraw.removeChild(currentPath)
+          } catch (err) { /* ignore */ }
+          removeHeightLabel()
+          return
+        }
+        let yLo = Math.min(startPt.y, lastPt.y)
+        let yHi = Math.max(startPt.y, lastPt.y)
+        const a = Math.max(yLo, span.yMin)
+        const b = Math.min(yHi, span.yMax)
+        if (a > b + 1e-9) {
+          try {
+            userDraw.removeChild(currentPath)
+          } catch (err) { /* ignore */ }
+          removeHeightLabel()
+          return
+        }
+        const d = 'M ' + xMid + ' ' + a + ' L ' + xMid + ' ' + b
+        currentPath.setAttribute('d', d)
+        lastCutLineX = xMid
+        lastHeightSeg = { x: xMid, yLo: a, yHi: b }
+        appendRightAngleMarker(xMid, a, b)
+        setHeightLabel(geoLabelsLayer, xMid, a, b)
+      }
+
+      function applyParallelogramSplit (cx) {
+        const whole = document.getElementById('paraWhole')
+        if (!whole || isCut) return
+        cx = clampCutLineX(cx)
+        const h = SPLIT_GAP / 2
+        while (userDraw.firstChild) {
+          userDraw.removeChild(userDraw.firstChild)
+        }
+        whole.remove()
+        const gL = document.createElementNS(NS, 'g')
+        gL.setAttribute('class', 'para-piece-group')
+        gL.setAttribute('data-side', 'left')
+        pieceGroupL = gL
+        pieceUserDxL = 0
+        const polyL = document.createElementNS(NS, 'polygon')
+        polyL.setAttribute('class', 'para-piece')
+        polyL.setAttribute('points', '97,290 ' + cx + ',290 ' + cx + ',110 187,110')
+        gL.appendChild(polyL)
+        const gR = document.createElementNS(NS, 'g')
+        gR.setAttribute('class', 'para-piece-group')
+        gR.setAttribute('data-side', 'right')
+        pieceGroupR = gR
+        pieceUserDxR = 0
+        const polyR = document.createElementNS(NS, 'polygon')
+        polyR.setAttribute('class', 'para-piece')
+        polyR.setAttribute('points', cx + ',290 433,290 523,110 ' + cx + ',110')
+        gR.appendChild(polyR)
+        applyPieceTransforms()
+        gL.addEventListener('pointerdown', onPiecePointerDown)
+        gL.addEventListener('pointermove', onPiecePointerMove)
+        gL.addEventListener('pointerup', onPiecePointerUp)
+        gL.addEventListener('pointercancel', onPiecePointerUp)
+        gR.addEventListener('pointerdown', onPiecePointerDown)
+        gR.addEventListener('pointermove', onPiecePointerMove)
+        gR.addEventListener('pointerup', onPiecePointerUp)
+        gR.addEventListener('pointercancel', onPiecePointerUp)
+        let seg = lastHeightSeg
+        if (!seg) {
+          const sp = verticalSpanInParallelogram(cx)
+          if (sp) seg = { x: cx, yLo: sp.yMin, yHi: sp.yMax }
+        } else {
+          seg = { x: cx, yLo: seg.yLo, yHi: seg.yHi }
+        }
+        if (seg) {
+          const hiPath = document.createElementNS(NS, 'path')
+          hiPath.setAttribute('class', 'user-stroke')
+          hiPath.setAttribute(
+            'd',
+            'M ' + seg.x + ' ' + seg.yLo + ' L ' + seg.x + ' ' + seg.yHi
+          )
+          gR.appendChild(hiPath)
+          if (seg.yLo <= 290 && seg.yHi >= 290 && seg.x >= 97 && seg.x <= 433) {
+            const ra = document.createElementNS(NS, 'path')
+            ra.setAttribute('class', 'right-angle-marker')
+            ra.setAttribute('d', rightAnglePathBottomAt(seg.x))
+            gR.appendChild(ra)
+          }
+          setHeightLabel(gR, seg.x, seg.yLo, seg.yHi)
+        } else {
+          removeHeightLabel()
+        }
+        paraLayer.appendChild(gL)
+        paraLayer.appendChild(gR)
+        svg.classList.add('is-cut')
+        isCut = true
+      }
+
+      /** 触发剪开（不再播放画布上的大剪刀动画） */
+      function runScissorsCutAnimation () {
+        if (isCut) return
+        const cx = clampCutLineX(lastCutLineX)
+        scissorsHandle.classList.add('is-disabled')
+        scissorsHandle.setAttribute('aria-disabled', 'true')
+        applyParallelogramSplit(cx)
+      }
+
+      scissorsHandle.addEventListener('pointerdown', onScissorsPointerDown)
+      scissorsHandle.addEventListener('pointermove', onScissorsPointerMove)
+      scissorsHandle.addEventListener('pointerup', onScissorsPointerUp)
+      scissorsHandle.addEventListener('pointercancel', onScissorsPointerUp)
+
+      btnReset.addEventListener('click', function () {
+        resetDemo()
+      })
+
+      function endStroke (e) {
+        if (scissorsDragging) return
+        if (!drawing) return
+        snapHeightToStraightLine()
+        drawing = false
+        currentPath = null
+        startPt = null
+        lastPt = null
+        try {
+          if (e.pointerId != null) svg.releasePointerCapture(e.pointerId)
+        } catch (err) { /* ignore */ }
+      }
+
+      svg.addEventListener('pointerdown', beginStroke)
+      svg.addEventListener('pointermove', continueStroke)
+      svg.addEventListener('pointerup', endStroke)
+      svg.addEventListener('pointercancel', endStroke)
+
+      svg.addEventListener('pointerdown', function (e) {
+        if (!isCut) return
+        const t = e.target
+        if (t && typeof t.closest === 'function' && t.closest('.para-piece-group')) return
+        clearPieceSelection()
+      })
+
+      ensureBottomLabel()
+    })()
+  </script>
+</body>
+
+</html>
