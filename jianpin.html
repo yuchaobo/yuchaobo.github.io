@@ -171,6 +171,13 @@
       stroke-width: 2.5;
     }
 
+    /* 块上的高线装饰不抢拖动命中（polygon 在下层接收事件） */
+    .para-piece-group .user-stroke,
+    .para-piece-group .right-angle-marker,
+    .para-piece-group .height-label-item {
+      pointer-events: none;
+    }
+
     .geo-labels-layer {
       pointer-events: none;
     }
@@ -218,7 +225,9 @@
       </svg>
     </div>
     <div class="cut-toolbar">
-      <button type="button" class="scissors-handle" id="scissorsHandle" title="拖到红色高线附近松手即可剪开"
+      <button type="button" class="scissors-handle is-disabled" id="scissorsHandle"
+        title="先画红色高线；每条高线可剪一次，拖到该线附近松手即沿该线剪开"
+        aria-disabled="true"
         aria-label="剪刀：拖到高线附近松手剪开">✂</button>
       <button type="button" class="btn-reset" id="btnReset" title="恢复完整图形并重新使用剪刀">重置</button>
     </div>
@@ -235,16 +244,13 @@
       const btnReset = document.getElementById('btnReset')
       /** 初始完整平行四边形（与 HTML 中 paraWhole 一致） */
       const PARA_WHOLE_POINTS = '97,290 433,290 523,110 187,110'
-      /** 最后一次成功画出的「高」的 x；剪开时沿此线 */
-      let lastCutLineX = 310
-      /** 最后一次成功修正后的高线段 { x, yLo, yHi }，剪开后画在右侧块上 */
-      let lastHeightSeg = null
+      /**
+       * 每条成功画出的「高」一条记录；图中有几条未剪的高线，剪刀就可再剪几次。
+       */
+      let heightSegments = []
+      /** 剪开后的多块：{ verts, g, userDx, userDy, baseTx, baseTy } */
+      let polyPieces = []
       let isCut = false
-      /** 剪开后左右块组引用与水平拖动偏移（viewBox 单位） */
-      let pieceGroupL = null
-      let pieceGroupR = null
-      let pieceUserDxL = 0
-      let pieceUserDxR = 0
       let pieceDrag = null
       let drawing = false
       let currentPath = null
@@ -263,10 +269,11 @@
         { x: 187, y: 110 }
       ]
       /**
-       * 沿整条竖直高剪开时，与顶边、底边都相交的 x 范围
+       * 竖直「高」与平行四边形相交的 x 范围（viewBox）：
+       * 含从顶边到右侧斜边的区段；上界略小于 523，避免与右上顶点重合时竖直段与分割多边形退化。
        */
-      const CUT_LINE_X_MIN = 187
-      const CUT_LINE_X_MAX = 433
+      const CUT_LINE_X_MIN = 97
+      const CUT_LINE_X_MAX = 522.5
       /** 底边 y（与 PARA_VERTICES 底边一致） */
       const BOTTOM_EDGE_Y = PARA_VERTICES[0].y
       /** 「底」在底边中点下方 */
@@ -277,9 +284,80 @@
       function clampCutLineX (x) {
         return Math.min(Math.max(x, CUT_LINE_X_MIN), CUT_LINE_X_MAX)
       }
+
+      /** 右侧斜边 BR(433,290) → TR(523,110) 上，给定 x 处的 y */
+      function rightEdgeYAtX (x) {
+        const x0 = 433
+        const x1 = 523
+        if (x < x0 - 1e-9 || x > x1 + 1e-9) return null
+        const t = (x - x0) / (x1 - x0)
+        return 290 + t * (110 - 290)
+      }
       /** 左上顶点（与 PARA_VERTICES[3] 一致），起点靠近时吸附到此点 */
       const VERTEX_TOP_LEFT = PARA_VERTICES[3]
       const SNAP_VERTEX_RADIUS = 32
+      /** 判断「起点、终点落在左、右斜边」时的吸附容差（viewBox） */
+      const SLANTED_EDGE_SNAP_PX = 30
+      /** 左斜边 TL(3)→BL(0)；右斜边 BR(1)→TR(2) */
+      const LEFT_SLANT_A = PARA_VERTICES[3]
+      const LEFT_SLANT_B = PARA_VERTICES[0]
+      const RIGHT_SLANT_A = PARA_VERTICES[1]
+      const RIGHT_SLANT_B = PARA_VERTICES[2]
+
+      function distPointToSegment (px, py, ax, ay, bx, by) {
+        const dx = bx - ax
+        const dy = by - ay
+        const len2 = dx * dx + dy * dy
+        if (len2 < 1e-12) return Math.hypot(px - ax, py - ay)
+        let t = ((px - ax) * dx + (py - ay) * dy) / len2
+        t = Math.min(1, Math.max(0, t))
+        const qx = ax + t * dx
+        const qy = ay + t * dy
+        return Math.hypot(px - qx, py - qy)
+      }
+
+      function pointNearSlantedEdge (p, ax, ay, bx, by, thresh) {
+        return distPointToSegment(p.x, p.y, ax, ay, bx, by) <= thresh
+      }
+
+      /** 左、右斜边中点（水平连线为两腰「中位线」） */
+      function slantEdgeMidpoints () {
+        const lx = (LEFT_SLANT_A.x + LEFT_SLANT_B.x) / 2
+        const ly = (LEFT_SLANT_A.y + LEFT_SLANT_B.y) / 2
+        const rx = (RIGHT_SLANT_A.x + RIGHT_SLANT_B.x) / 2
+        const ry = (RIGHT_SLANT_A.y + RIGHT_SLANT_B.y) / 2
+        return { lx: lx, ly: ly, rx: rx, ry: ry }
+      }
+
+      /**
+       * 高线起点或终点靠近左/右斜边中点时，竖直高的 x 修正到该腰中点的 x。
+       * @returns {number|null} 命中则返回已夹紧的 x，否则 null
+       */
+      function trySnapVerticalXToSlantEdgeMid (startPt, lastPt) {
+        const m = slantEdgeMidpoints()
+        const R = SNAP_VERTEX_RADIUS
+        let bestX = null
+        let bestD = Infinity
+        const pts = [startPt, lastPt]
+        for (let i = 0; i < pts.length; i++) {
+          const pt = pts[i]
+          const dL = Math.hypot(pt.x - m.lx, pt.y - m.ly)
+          const dR = Math.hypot(pt.x - m.rx, pt.y - m.ry)
+          if (dL <= R && dL < bestD) {
+            bestD = dL
+            bestX = m.lx
+          }
+          if (dR <= R && dR < bestD) {
+            bestD = dR
+            bestX = m.rx
+          }
+        }
+        if (bestX == null) return null
+        return Math.min(
+          Math.max(bestX, CUT_LINE_X_MIN),
+          CUT_LINE_X_MAX
+        )
+      }
 
       /** 竖直线 x = x0 与平行四边形边界的交点 y，取最小/最大即夹在上下边之间的范围 */
       function verticalSpanInParallelogram (x0) {
@@ -314,6 +392,198 @@
         }
       }
 
+      /** 竖直线 x=x0 与任意多边形边的交点，用于竖直范围 */
+      function verticalSpanInPolygon (verts, x0) {
+        const ys = []
+        const n = verts.length
+        for (let i = 0; i < n; i++) {
+          const ax = verts[i].x
+          const ay = verts[i].y
+          const bx = verts[(i + 1) % n].x
+          const by = verts[(i + 1) % n].y
+          const minx = Math.min(ax, bx)
+          const maxx = Math.max(ax, bx)
+          if (Math.abs(ax - bx) < 1e-9) {
+            if (Math.abs(x0 - ax) <= 1e-9) {
+              ys.push(ay, by)
+            }
+            continue
+          }
+          if (Math.abs(ay - by) < 1e-9) {
+            if (x0 >= minx - 1e-9 && x0 <= maxx + 1e-9) ys.push(ay)
+            continue
+          }
+          const t = (x0 - ax) / (bx - ax)
+          if (t >= -1e-9 && t <= 1 + 1e-9) {
+            ys.push(ay + t * (by - ay))
+          }
+        }
+        if (ys.length < 2) return null
+        return {
+          yMin: Math.min.apply(null, ys),
+          yMax: Math.max.apply(null, ys)
+        }
+      }
+
+      function cloneVerts (verts) {
+        return verts.map(function (p) {
+          return { x: p.x, y: p.y }
+        })
+      }
+
+      function pointsToAttr (verts) {
+        return verts
+          .map(function (p) {
+            return p.x + ',' + p.y
+          })
+          .join(' ')
+      }
+
+      function dedupeConsecutiveVerts (verts) {
+        const out = []
+        const EPS = 1e-3
+        for (let i = 0; i < verts.length; i++) {
+          const p = verts[i]
+          if (
+            out.length > 0 &&
+            Math.abs(p.x - out[out.length - 1].x) < EPS &&
+            Math.abs(p.y - out[out.length - 1].y) < EPS
+          ) {
+            continue
+          }
+          out.push(p)
+        }
+        if (
+          out.length > 1 &&
+          Math.abs(out[0].x - out[out.length - 1].x) < EPS &&
+          Math.abs(out[0].y - out[out.length - 1].y) < EPS
+        ) {
+          out.pop()
+        }
+        return out
+      }
+
+      /** 用竖直线 x=cx 将凸多边形裁成左（x<=cx）/ 右（x>=cx）两半 */
+      function clipPolygonHalfPlane (verts, cx, keepLeft) {
+        const EPS = 1e-9
+        const out = []
+        const n = verts.length
+        if (n < 2) return []
+        function inside (p) {
+          return keepLeft ? p.x <= cx + EPS : p.x >= cx - EPS
+        }
+        function cross (S, E) {
+          const dx = E.x - S.x
+          if (Math.abs(dx) < 1e-12) return null
+          const t = (cx - S.x) / dx
+          if (t < -EPS || t > 1 + EPS) return null
+          return { x: cx, y: S.y + t * (E.y - S.y) }
+        }
+        let prev = verts[n - 1]
+        let prevIn = inside(prev)
+        for (let i = 0; i < n; i++) {
+          const cur = verts[i]
+          const curIn = inside(cur)
+          if (curIn) {
+            if (!prevIn) {
+              const inter = cross(prev, cur)
+              if (inter) out.push(inter)
+            }
+            out.push({ x: cur.x, y: cur.y })
+          } else if (prevIn) {
+            const inter = cross(prev, cur)
+            if (inter) out.push(inter)
+          }
+          prev = cur
+          prevIn = curIn
+        }
+        return dedupeConsecutiveVerts(out)
+      }
+
+      /** 用水平线 y=hy 裁凸多边形：keepBottom 为 true 时保留 y≥hy 一侧 */
+      function clipPolygonHalfPlaneHorizontal (verts, hy, keepBottom) {
+        const EPS = 1e-9
+        const out = []
+        const n = verts.length
+        if (n < 2) return []
+        function inside (p) {
+          return keepBottom ? p.y >= hy - EPS : p.y <= hy + EPS
+        }
+        function cross (S, E) {
+          const dy = E.y - S.y
+          if (Math.abs(dy) < 1e-12) return null
+          const t = (hy - S.y) / dy
+          if (t < -EPS || t > 1 + EPS) return null
+          return { x: S.x + t * (E.x - S.x), y: hy }
+        }
+        let prev = verts[n - 1]
+        let prevIn = inside(prev)
+        for (let i = 0; i < n; i++) {
+          const cur = verts[i]
+          const curIn = inside(cur)
+          if (curIn) {
+            if (!prevIn) {
+              const inter = cross(prev, cur)
+              if (inter) out.push(inter)
+            }
+            out.push({ x: cur.x, y: cur.y })
+          } else if (prevIn) {
+            const inter = cross(prev, cur)
+            if (inter) out.push(inter)
+          }
+          prev = cur
+          prevIn = curIn
+        }
+        return dedupeConsecutiveVerts(out)
+      }
+
+      function polygonSignedArea (verts) {
+        let a = 0
+        const n = verts.length
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n
+          a += verts[i].x * verts[j].y - verts[j].x * verts[i].y
+        }
+        return a / 2
+      }
+
+      function centroidX (verts) {
+        let sx = 0
+        for (let i = 0; i < verts.length; i++) {
+          sx += verts[i].x
+        }
+        return verts.length ? sx / verts.length : 0
+      }
+
+      function centroidY (verts) {
+        let sy = 0
+        for (let i = 0; i < verts.length; i++) {
+          sy += verts[i].y
+        }
+        return verts.length ? sy / verts.length : 0
+      }
+
+      function sortPiecesLeftToRight () {
+        polyPieces.sort(function (a, b) {
+          return centroidX(a.verts) - centroidX(b.verts)
+        })
+        for (let i = 0; i < polyPieces.length; i++) {
+          polyPieces[i].g.setAttribute('data-piece-index', String(i))
+        }
+      }
+
+      function sortPiecesTopToBottom () {
+        polyPieces.sort(function (a, b) {
+          return centroidY(a.verts) - centroidY(b.verts)
+        })
+        for (let i = 0; i < polyPieces.length; i++) {
+          polyPieces[i].g.setAttribute('data-piece-index', String(i))
+        }
+      }
+
+      /** 顶边 y（与 PARA_VERTICES 上边 TL–TR 一致） */
+      const TOP_EDGE_Y = PARA_VERTICES[3].y
+
       /** 仅底边垂足处：直角标缺口朝向形内（向上） */
       function rightAnglePathBottomAt (fx) {
         const s = 11
@@ -321,38 +591,71 @@
         return 'M ' + (fx + s) + ' ' + fy + ' L ' + (fx + s) + ' ' + (fy - s) + ' L ' + fx + ' ' + (fy - s)
       }
 
+      /** 顶边与竖直高的交点处：直角标缺口朝向形内（向下） */
+      function rightAnglePathTopAt (fx) {
+        const s = 11
+        const fy = TOP_EDGE_Y
+        return (
+          'M ' +
+          (fx + s) +
+          ' ' +
+          fy +
+          ' L ' +
+          (fx + s) +
+          ' ' +
+          (fy + s) +
+          ' L ' +
+          fx +
+          ' ' +
+          (fy + s)
+        )
+      }
+
       /**
-       * 直角标只画在底边上（与高、底边夹角处）。
+       * 底边垂足处、或「顶边→右侧斜边」时在顶边垂足处画直角标。
        */
-      function appendRightAngleMarker (xMid, yLo, yHi) {
-        if (!(yLo <= 290 && yHi >= 290 && xMid >= 97 && xMid <= 433)) return
-        const fx = Math.min(Math.max(xMid, 97), 433)
-        const p = document.createElementNS(NS, 'path')
-        p.setAttribute('class', 'right-angle-marker')
-        p.setAttribute('d', rightAnglePathBottomAt(fx))
-        userDraw.appendChild(p)
-      }
-
-      function removeHeightLabel () {
-        const t = document.getElementById('labelHeight')
-        if (t && t.parentNode) {
-          t.parentNode.removeChild(t)
+      function appendRightAngleMarkers (xMid, yLo, yHi) {
+        let raEl = null
+        let raTopEl = null
+        if (yLo <= 290 && yHi >= 290 && xMid >= 97 && xMid <= 433) {
+          const fx = Math.min(Math.max(xMid, 97), 433)
+          const p = document.createElementNS(NS, 'path')
+          p.setAttribute('class', 'right-angle-marker')
+          p.setAttribute('data-seg-x', String(xMid))
+          p.setAttribute('d', rightAnglePathBottomAt(fx))
+          userDraw.appendChild(p)
+          raEl = p
         }
+        if (
+          xMid > 433 &&
+          xMid <= CUT_LINE_X_MAX &&
+          Math.min(yLo, yHi) <= TOP_EDGE_Y + 2 &&
+          Math.max(yLo, yHi) >= TOP_EDGE_Y - 2
+        ) {
+          const fx = Math.min(Math.max(xMid, 187), 523)
+          const p = document.createElementNS(NS, 'path')
+          p.setAttribute('class', 'right-angle-marker')
+          p.setAttribute('data-seg-x', String(xMid))
+          p.setAttribute('d', rightAnglePathTopAt(fx))
+          userDraw.appendChild(p)
+          raTopEl = p
+        }
+        return { raEl: raEl, raTopEl: raTopEl }
       }
 
-      function setHeightLabel (parent, x, yLo, yHi) {
-        removeHeightLabel()
-        if (!parent) return
+      function addHeightLabelItem (parent, x, yLo, yHi) {
+        if (!parent) return null
         const yMid = (yLo + yHi) / 2
         const text = document.createElementNS(NS, 'text')
-        text.setAttribute('id', 'labelHeight')
-        text.setAttribute('class', 'geo-label')
+        text.setAttribute('class', 'geo-label height-label-item')
+        text.setAttribute('data-seg-x', String(x))
         text.setAttribute('x', String(x + HEIGHT_LABEL_OFFSET_X))
         text.setAttribute('y', String(yMid))
         text.setAttribute('text-anchor', 'start')
         text.setAttribute('dominant-baseline', 'middle')
         text.textContent = '高'
         parent.appendChild(text)
+        return text
       }
 
       function ensureBottomLabel () {
@@ -382,17 +685,60 @@
         return vb.width / w
       }
 
-      function applyPieceTransforms () {
-        if (!pieceGroupL || !pieceGroupR) return
-        const h = SPLIT_GAP / 2
-        pieceGroupL.setAttribute(
-          'transform',
-          'translate(' + (-h + pieceUserDxL) + ', 0)'
-        )
-        pieceGroupR.setAttribute(
-          'transform',
-          'translate(' + (h + pieceUserDxR) + ', 0)'
-        )
+      function svgDyPerClientPx () {
+        const vb = svg.viewBox.baseVal
+        const h = svg.getBoundingClientRect().height
+        if (h < 1e-6) return 1
+        return vb.height / h
+      }
+
+      function getPieceTransformX (pieceIndex) {
+        const n = polyPieces.length
+        if (n === 0 || pieceIndex < 0 || pieceIndex >= n) return 0
+        const p = polyPieces[pieceIndex]
+        const bx = p.baseTx != null ? p.baseTx : 0
+        return bx + (p.userDx || 0)
+      }
+
+      function applyAllPieceTransforms () {
+        const n = polyPieces.length
+        if (n === 0) return
+        for (let i = 0; i < n; i++) {
+          const p = polyPieces[i]
+          const tx = (p.baseTx != null ? p.baseTx : 0) + (p.userDx || 0)
+          const ty = (p.baseTy != null ? p.baseTy : 0) + (p.userDy || 0)
+          p.g.setAttribute('transform', 'translate(' + tx + ', ' + ty + ')')
+        }
+      }
+
+      /** 左块多边形局部坐标下的水平中心（不含 group transform），用于箭头尾 */
+      function getLeftPieceBoundingCenterXLocal () {
+        if (polyPieces.length === 0) {
+          return (PARA_VERTICES[0].x + PARA_VERTICES[1].x) / 2
+        }
+        const v = polyPieces[0].verts
+        let minx = Infinity
+        let maxx = -Infinity
+        for (let i = 0; i < v.length; i++) {
+          minx = Math.min(minx, v[i].x)
+          maxx = Math.max(maxx, v[i].x)
+        }
+        return (minx + maxx) / 2
+      }
+
+      /** 最右块水平中心（不含 transform），用于多块时右侧箭头锚点 */
+      function getRightPieceBoundingCenterXLocal () {
+        if (polyPieces.length === 0) {
+          return (PARA_VERTICES[1].x + PARA_VERTICES[2].x) / 2
+        }
+        const v = polyPieces[polyPieces.length - 1].verts
+        let minx = Infinity
+        let maxx = -Infinity
+        for (let i = 0; i < v.length; i++) {
+          minx = Math.min(minx, v[i].x)
+          maxx = Math.max(maxx, v[i].x)
+        }
+        return (minx + maxx) / 2
       }
 
       function removeLeftDragArrows () {
@@ -403,7 +749,7 @@
       }
 
       function getLeftPieceArrowCenterX () {
-        return (PARA_VERTICES[0].x + clampCutLineX(lastCutLineX)) / 2
+        return getLeftPieceBoundingCenterXLocal() + getPieceTransformX(0)
       }
 
       /** 箭头杆：长度 = 基准 + 有符号位移×系数；向右（dSvg>0）变长，向左（dSvg<0）变短，方向始终朝 +x */
@@ -429,10 +775,11 @@
       }
 
       /**
-       * 箭尾固定在全局 SVG 坐标（按下时记录），不随左块移动。
-       * signedDelta：本次手势内水平位移 dSvg（viewBox），向右为正、向左为负。
+       * 箭尾固定在全局 SVG 坐标（按下时记录），不随块移动。
+       * signedDelta：水平位移 dSvg（viewBox）；向左拖最右块时传入镜像后的正值，杆长与左块对称。
+       * mirror：true 表示箭头朝左（最右块向左拖）。
        */
-      function createLeftDragArrows (signedDelta) {
+      function createLeftDragArrows (signedDelta, mirror) {
         removeLeftDragArrows()
         if (pieceDrag == null || pieceDrag.tailFixedGlobalX == null) return
         const tailX = pieceDrag.tailFixedGlobalX
@@ -448,6 +795,7 @@
           'left-piece-drag-arrows left-piece-drag-arrows-overlay'
         )
         root.setAttribute('pointer-events', 'none')
+        const mir = mirror === true
         ys.forEach(function (y) {
           const unit = document.createElementNS(NS, 'g')
           unit.setAttribute('class', 'left-drag-arrow-unit')
@@ -456,15 +804,24 @@
             'translate(' + tailX + ', ' + y + ')'
           )
           const line = document.createElementNS(NS, 'line')
-          line.setAttribute('x1', '0')
-          line.setAttribute('y1', '0')
-          line.setAttribute('x2', String(lineLen))
-          line.setAttribute('y2', '0')
           line.setAttribute('class', 'left-drag-arrow-line')
           const head = document.createElementNS(NS, 'path')
-          head.setAttribute('transform', 'translate(' + lineLen + ', 0)')
-          head.setAttribute('d', 'M 0 -5 L 10 0 L 0 5 Z')
           head.setAttribute('class', 'left-drag-arrow-head')
+          if (mir) {
+            line.setAttribute('x1', '0')
+            line.setAttribute('y1', '0')
+            line.setAttribute('x2', String(-lineLen))
+            line.setAttribute('y2', '0')
+            head.setAttribute('transform', 'translate(' + -lineLen + ', 0)')
+            head.setAttribute('d', 'M 0 -5 L -10 0 L 0 5 Z')
+          } else {
+            line.setAttribute('x1', '0')
+            line.setAttribute('y1', '0')
+            line.setAttribute('x2', String(lineLen))
+            line.setAttribute('y2', '0')
+            head.setAttribute('transform', 'translate(' + lineLen + ', 0)')
+            head.setAttribute('d', 'M 0 -5 L 10 0 L 0 5 Z')
+          }
           unit.appendChild(line)
           unit.appendChild(head)
           root.appendChild(unit)
@@ -472,7 +829,7 @@
         svg.insertBefore(root, userDraw)
       }
 
-      function updateLeftDragArrowGeometry (signedDelta) {
+      function updateLeftDragArrowGeometry (signedDelta, mirror) {
         const root = svg.getElementById('leftPieceArrowsOverlay')
         if (!root || pieceDrag == null || pieceDrag.tailFixedGlobalX == null) {
           return
@@ -481,6 +838,7 @@
         const ys = [135, 200, 265]
         const se = computeLeftArrowShaft(signedDelta)
         const lineLen = se.x2 - se.x1
+        const mir = mirror === true
         const units = root.querySelectorAll('.left-drag-arrow-unit')
         for (let i = 0; i < units.length; i++) {
           units[i].setAttribute(
@@ -490,19 +848,30 @@
           const line = units[i].querySelector('.left-drag-arrow-line')
           const head = units[i].querySelector('.left-drag-arrow-head')
           if (line) {
-            line.setAttribute('x2', String(lineLen))
+            if (mir) {
+              line.setAttribute('x2', String(-lineLen))
+            } else {
+              line.setAttribute('x2', String(lineLen))
+            }
           }
           if (head) {
-            head.setAttribute('transform', 'translate(' + lineLen + ', 0)')
+            if (mir) {
+              head.setAttribute('transform', 'translate(' + -lineLen + ', 0)')
+              head.setAttribute('d', 'M 0 -5 L -10 0 L 0 5 Z')
+            } else {
+              head.setAttribute('transform', 'translate(' + lineLen + ', 0)')
+              head.setAttribute('d', 'M 0 -5 L 10 0 L 0 5 Z')
+            }
           }
         }
       }
 
       function clearPieceSelection () {
-        const pl = pieceGroupL && pieceGroupL.querySelector('.para-piece')
-        const pr = pieceGroupR && pieceGroupR.querySelector('.para-piece')
-        if (pl) pl.classList.remove('para-piece--selected')
-        if (pr) pr.classList.remove('para-piece--selected')
+        if (!paraLayer) return
+        const polys = paraLayer.querySelectorAll('.para-piece')
+        for (let i = 0; i < polys.length; i++) {
+          polys[i].classList.remove('para-piece--selected')
+        }
       }
 
       function selectPiecePolygon (g) {
@@ -518,21 +887,37 @@
         if (!g || g.tagName !== 'g') return
         e.preventDefault()
         e.stopPropagation()
-        const side = g.getAttribute('data-side')
-        const originDx = side === 'left' ? pieceUserDxL : pieceUserDxR
+        const idx = parseInt(g.getAttribute('data-piece-index'), 10)
+        if (isNaN(idx) || idx < 0 || idx >= polyPieces.length) return
+        const originDx = polyPieces[idx].userDx || 0
+        const originDy = polyPieces[idx].userDy || 0
         const pd = {
-          side: side || 'left',
+          pieceIndex: idx,
           originClientX: e.clientX,
+          originClientY: e.clientY,
           originDx: originDx,
+          originDy: originDy,
           g: g
         }
-        if (side === 'left') {
+        const nPieces = polyPieces.length
+        const lastIdx = nPieces - 1
+        const multiPiece = nPieces > 2
+        if (idx === 0) {
           pd.lastClientX = e.clientX
           pd.arrowFirstMove = 'undecided'
-          const h = SPLIT_GAP / 2
+          pd.arrowMirror = false
           const se0 = computeLeftArrowShaft(0)
           pd.tailFixedGlobalX =
-            getLeftPieceArrowCenterX() + se0.x1 + (-h + pieceUserDxL)
+            getLeftPieceBoundingCenterXLocal() + se0.x1 + getPieceTransformX(0)
+        } else if (multiPiece && idx === lastIdx) {
+          pd.lastClientX = e.clientX
+          pd.arrowFirstMove = 'undecided'
+          pd.arrowMirror = true
+          const se0 = computeLeftArrowShaft(0)
+          pd.tailFixedGlobalX =
+            getRightPieceBoundingCenterXLocal() -
+            se0.x1 +
+            getPieceTransformX(idx)
         }
         pieceDrag = pd
         g.classList.add('is-dragging')
@@ -548,12 +933,22 @@
       function onPiecePointerMove (e) {
         if (!pieceDrag) return
         e.preventDefault()
-        const scale = svgDxPerClientPx()
+        const scaleX = svgDxPerClientPx()
+        const scaleY = svgDyPerClientPx()
         const dClient = e.clientX - pieceDrag.originClientX
-        const dSvg = dClient * scale
+        const dSvg = dClient * scaleX
         const next = pieceDrag.originDx + dSvg
-        if (pieceDrag.side === 'left') {
-          pieceUserDxL = next
+        const idx = pieceDrag.pieceIndex
+        if (idx >= 0 && idx < polyPieces.length) {
+          polyPieces[idx].userDx = next
+          const dClientY = e.clientY - pieceDrag.originClientY
+          const dSvgY = dClientY * scaleY
+          polyPieces[idx].userDy = pieceDrag.originDy + dSvgY
+        }
+        const nP = polyPieces.length
+        const lastI = nP - 1
+        const multi = nP > 2
+        if (idx === 0) {
           pieceDrag.lastClientX = e.clientX
           if (pieceDrag.arrowFirstMove === 'undecided') {
             if (dSvg > ARROW_FIRST_MOVE_EPS) {
@@ -566,15 +961,32 @@
             removeLeftDragArrows()
           } else if (pieceDrag.arrowFirstMove === 'right') {
             if (!svg.getElementById('leftPieceArrowsOverlay')) {
-              createLeftDragArrows(dSvg)
+              createLeftDragArrows(dSvg, false)
             } else {
-              updateLeftDragArrowGeometry(dSvg)
+              updateLeftDragArrowGeometry(dSvg, false)
             }
           }
-        } else {
-          pieceUserDxR = next
+        } else if (multi && idx === lastI) {
+          pieceDrag.lastClientX = e.clientX
+          if (pieceDrag.arrowFirstMove === 'undecided') {
+            if (dSvg < -ARROW_FIRST_MOVE_EPS) {
+              pieceDrag.arrowFirstMove = 'right'
+            } else if (dSvg > ARROW_FIRST_MOVE_EPS) {
+              pieceDrag.arrowFirstMove = 'left'
+            }
+          }
+          if (pieceDrag.arrowFirstMove === 'left') {
+            removeLeftDragArrows()
+          } else if (pieceDrag.arrowFirstMove === 'right') {
+            const mirrorDelta = -dSvg
+            if (!svg.getElementById('leftPieceArrowsOverlay')) {
+              createLeftDragArrows(mirrorDelta, true)
+            } else {
+              updateLeftDragArrowGeometry(mirrorDelta, true)
+            }
+          }
         }
-        applyPieceTransforms()
+        applyAllPieceTransforms()
       }
 
       function onPiecePointerUp (e) {
@@ -601,13 +1013,9 @@
         whole.setAttribute('points', PARA_WHOLE_POINTS)
         paraLayer.appendChild(whole)
 
-        lastCutLineX = 310
-        lastHeightSeg = null
+        heightSegments = []
+        polyPieces = []
         isCut = false
-        pieceGroupL = null
-        pieceGroupR = null
-        pieceUserDxL = 0
-        pieceUserDxR = 0
         pieceDrag = null
         drawing = false
         currentPath = null
@@ -618,13 +1026,11 @@
         scissorsDragging = false
         scissorsDragMoved = false
         resetScissorsHandleStyles()
-        scissorsHandle.classList.remove('is-disabled')
-        scissorsHandle.removeAttribute('aria-disabled')
-
         svg.classList.remove('is-cut')
 
         clearGeoLabelsLayer()
         ensureBottomLabel()
+        updateScissorsEnabled()
       }
 
       function toSvgPoint (e) {
@@ -647,12 +1053,59 @@
       const NEAR_HEIGHT_LINE_X = 26
       const NEAR_HEIGHT_LINE_Y_PAD = 14
 
-      function isNearHeightLine (clientX, clientY) {
+      /**
+       * 在未剪的高线中，取与松手点最近的一条（须落在该线的 x/y 容差内）。
+       */
+      function findHeightSegmentAt (clientX, clientY) {
         const p = toSvgPointXY(clientX, clientY)
-        if (Math.abs(p.x - lastCutLineX) > NEAR_HEIGHT_LINE_X) return false
-        const span = verticalSpanInParallelogram(lastCutLineX)
-        if (!span) return false
-        return p.y >= span.yMin - NEAR_HEIGHT_LINE_Y_PAD && p.y <= span.yMax + NEAR_HEIGHT_LINE_Y_PAD
+        let best = null
+        let bestMetric = Infinity
+        for (let i = 0; i < heightSegments.length; i++) {
+          const s = heightSegments[i]
+          if (s.cut) continue
+          if (s.kind === 'slantMidHorizontal') {
+            const hy = s.y
+            const xLo = Math.min(s.xLo, s.xHi)
+            const xHi = Math.max(s.xLo, s.xHi)
+            if (p.x < xLo - NEAR_HEIGHT_LINE_X || p.x > xHi + NEAR_HEIGHT_LINE_X) {
+              continue
+            }
+            if (Math.abs(p.y - hy) > NEAR_HEIGHT_LINE_Y_PAD * 2) continue
+            const dist = Math.abs(p.y - hy)
+            if (dist < bestMetric) {
+              bestMetric = dist
+              best = s
+            }
+            continue
+          }
+          if (s.x == null || isNaN(s.x)) continue
+          if (Math.abs(p.x - s.x) > NEAR_HEIGHT_LINE_X) continue
+          if (
+            p.y < s.yLo - NEAR_HEIGHT_LINE_Y_PAD ||
+            p.y > s.yHi + NEAR_HEIGHT_LINE_Y_PAD
+          ) {
+            continue
+          }
+          const dx = Math.abs(p.x - s.x)
+          if (dx < bestMetric) {
+            bestMetric = dx
+            best = s
+          }
+        }
+        return best
+      }
+
+      function updateScissorsEnabled () {
+        const hasUncut = heightSegments.some(function (s) {
+          return !s.cut
+        })
+        if (hasUncut) {
+          scissorsHandle.classList.remove('is-disabled')
+          scissorsHandle.removeAttribute('aria-disabled')
+        } else {
+          scissorsHandle.classList.add('is-disabled')
+          scissorsHandle.setAttribute('aria-disabled', 'true')
+        }
       }
 
       let scissorsDragging = false
@@ -690,7 +1143,7 @@
       }
 
       function onScissorsPointerDown (e) {
-        if (isCut || scissorsHandle.classList.contains('is-disabled')) return
+        if (scissorsHandle.classList.contains('is-disabled')) return
         if (e.pointerType === 'mouse' && e.button !== 0) return
         e.preventDefault()
         e.stopPropagation()
@@ -724,15 +1177,16 @@
         if (!scissorsDragging) return
         e.preventDefault()
         const moved = scissorsDragMoved
-        const ok = moved && isNearHeightLine(e.clientX, e.clientY)
+        const ok =
+          moved && findHeightSegmentAt(e.clientX, e.clientY) != null
         scissorsDragging = false
         scissorsDragMoved = false
         resetScissorsHandleStyles()
         try {
           if (e.pointerId != null) scissorsHandle.releasePointerCapture(e.pointerId)
         } catch (err) { /* ignore */ }
-        if (ok && !isCut) {
-          runScissorsCutAnimation()
+        if (ok) {
+          runScissorsCutAnimation(e.clientX, e.clientY)
         }
       }
 
@@ -766,7 +1220,9 @@
       }
 
       /**
-       * 将手绘修正为直线「高」：底边水平 → 竖直线；再裁剪到平行四边形内（不超出上下边及斜边范围）。
+       * 将手绘修正为直线：
+       * - 起点、终点分别落在左斜边与右斜边（或互换）→ 水平线连接两斜边中点；
+       * - 否则按「高」：竖直线并限制在形内。
        */
       function snapHeightToStraightLine () {
         if (!currentPath || !startPt || !lastPt) return
@@ -775,7 +1231,72 @@
           try {
             userDraw.removeChild(currentPath)
           } catch (err) { /* ignore */ }
-          removeHeightLabel()
+          return
+        }
+
+        const sOnLeft = pointNearSlantedEdge(
+          startPt,
+          LEFT_SLANT_A.x,
+          LEFT_SLANT_A.y,
+          LEFT_SLANT_B.x,
+          LEFT_SLANT_B.y,
+          SLANTED_EDGE_SNAP_PX
+        )
+        const sOnRight = pointNearSlantedEdge(
+          startPt,
+          RIGHT_SLANT_A.x,
+          RIGHT_SLANT_A.y,
+          RIGHT_SLANT_B.x,
+          RIGHT_SLANT_B.y,
+          SLANTED_EDGE_SNAP_PX
+        )
+        const eOnLeft = pointNearSlantedEdge(
+          lastPt,
+          LEFT_SLANT_A.x,
+          LEFT_SLANT_A.y,
+          LEFT_SLANT_B.x,
+          LEFT_SLANT_B.y,
+          SLANTED_EDGE_SNAP_PX
+        )
+        const eOnRight = pointNearSlantedEdge(
+          lastPt,
+          RIGHT_SLANT_A.x,
+          RIGHT_SLANT_A.y,
+          RIGHT_SLANT_B.x,
+          RIGHT_SLANT_B.y,
+          SLANTED_EDGE_SNAP_PX
+        )
+        if (
+          (sOnLeft && eOnRight) ||
+          (sOnRight && eOnLeft)
+        ) {
+          const m = slantEdgeMidpoints()
+          const d =
+            'M ' +
+            m.lx +
+            ' ' +
+            m.ly +
+            ' L ' +
+            m.rx +
+            ' ' +
+            m.ry
+          currentPath.setAttribute('d', d)
+          currentPath.removeAttribute('data-seg-x')
+          currentPath.setAttribute('data-seg-y', String(m.ly))
+          heightSegments.push({
+            kind: 'slantMidHorizontal',
+            y: m.ly,
+            xLo: m.lx,
+            xHi: m.rx,
+            yLo: m.ly,
+            yHi: m.ry,
+            cut: false,
+            pathEl: currentPath,
+            raEl: null,
+            raTopEl: null,
+            labelEl: null
+          })
+          updateScissorsEnabled()
           return
         }
 
@@ -790,7 +1311,6 @@
             try {
               userDraw.removeChild(currentPath)
             } catch (err) { /* ignore */ }
-            removeHeightLabel()
             return
           }
           const yStart = VERTEX_TOP_LEFT.y
@@ -803,34 +1323,43 @@
             try {
               userDraw.removeChild(currentPath)
             } catch (err) { /* ignore */ }
-            removeHeightLabel()
             return
           }
           const d = 'M ' + xMid + ' ' + yStart + ' L ' + xMid + ' ' + yEnd
           currentPath.setAttribute('d', d)
-          lastCutLineX = xMid
-          lastHeightSeg = {
+          currentPath.setAttribute('data-seg-x', String(xMid))
+          const yLo = Math.min(yStart, yEnd)
+          const yHi = Math.max(yStart, yEnd)
+          const ram = appendRightAngleMarkers(xMid, yLo, yHi)
+          const labelEl = addHeightLabelItem(geoLabelsLayer, xMid, yLo, yHi)
+          heightSegments.push({
             x: xMid,
-            yLo: Math.min(yStart, yEnd),
-            yHi: Math.max(yStart, yEnd)
-          }
-          appendRightAngleMarker(xMid, lastHeightSeg.yLo, lastHeightSeg.yHi)
-          setHeightLabel(
-            geoLabelsLayer,
-            xMid,
-            lastHeightSeg.yLo,
-            lastHeightSeg.yHi
-          )
+            yLo: yLo,
+            yHi: yHi,
+            cut: false,
+            pathEl: currentPath,
+            raEl: ram.raEl,
+            raTopEl: ram.raTopEl,
+            labelEl: labelEl
+          })
+          updateScissorsEnabled()
           return
         }
 
-        const xMid = (startPt.x + lastPt.x) / 2
+        const xMidRaw = (startPt.x + lastPt.x) / 2
+        let xMid = Math.min(
+          Math.max(xMidRaw, CUT_LINE_X_MIN),
+          CUT_LINE_X_MAX
+        )
+        const xMidSnapped = trySnapVerticalXToSlantEdgeMid(startPt, lastPt)
+        if (xMidSnapped != null) {
+          xMid = xMidSnapped
+        }
         const span = verticalSpanInParallelogram(xMid)
         if (!span) {
           try {
             userDraw.removeChild(currentPath)
           } catch (err) { /* ignore */ }
-          removeHeightLabel()
           return
         }
         let yLo = Math.min(startPt.y, lastPt.y)
@@ -841,91 +1370,496 @@
           try {
             userDraw.removeChild(currentPath)
           } catch (err) { /* ignore */ }
-          removeHeightLabel()
           return
         }
         const d = 'M ' + xMid + ' ' + a + ' L ' + xMid + ' ' + b
         currentPath.setAttribute('d', d)
-        lastCutLineX = xMid
-        lastHeightSeg = { x: xMid, yLo: a, yHi: b }
-        appendRightAngleMarker(xMid, a, b)
-        setHeightLabel(geoLabelsLayer, xMid, a, b)
+        currentPath.setAttribute('data-seg-x', String(xMid))
+        const ram = appendRightAngleMarkers(xMid, a, b)
+        const labelEl = addHeightLabelItem(geoLabelsLayer, xMid, a, b)
+        heightSegments.push({
+          x: xMid,
+          yLo: a,
+          yHi: b,
+          cut: false,
+          pathEl: currentPath,
+          raEl: ram.raEl,
+          raTopEl: ram.raTopEl,
+          labelEl: labelEl
+        })
+        updateScissorsEnabled()
       }
 
-      function applyParallelogramSplit (cx) {
-        const whole = document.getElementById('paraWhole')
-        if (!whole || isCut) return
-        cx = clampCutLineX(cx)
-        const h = SPLIT_GAP / 2
-        while (userDraw.firstChild) {
-          userDraw.removeChild(userDraw.firstChild)
+      function makePieceObject (verts) {
+        const g = document.createElementNS(NS, 'g')
+        g.setAttribute('class', 'para-piece-group')
+        const poly = document.createElementNS(NS, 'polygon')
+        poly.setAttribute('class', 'para-piece')
+        poly.setAttribute('points', pointsToAttr(verts))
+        g.appendChild(poly)
+        return {
+          g: g,
+          verts: cloneVerts(verts),
+          userDx: 0,
+          userDy: 0,
+          baseTx: 0,
+          baseTy: 0
         }
-        whole.remove()
-        const gL = document.createElementNS(NS, 'g')
-        gL.setAttribute('class', 'para-piece-group')
-        gL.setAttribute('data-side', 'left')
-        pieceGroupL = gL
-        pieceUserDxL = 0
-        const polyL = document.createElementNS(NS, 'polygon')
-        polyL.setAttribute('class', 'para-piece')
-        polyL.setAttribute('points', '97,290 ' + cx + ',290 ' + cx + ',110 187,110')
-        gL.appendChild(polyL)
-        const gR = document.createElementNS(NS, 'g')
-        gR.setAttribute('class', 'para-piece-group')
-        gR.setAttribute('data-side', 'right')
-        pieceGroupR = gR
-        pieceUserDxR = 0
-        const polyR = document.createElementNS(NS, 'polygon')
-        polyR.setAttribute('class', 'para-piece')
-        polyR.setAttribute('points', cx + ',290 433,290 523,110 ' + cx + ',110')
-        gR.appendChild(polyR)
-        applyPieceTransforms()
-        gL.addEventListener('pointerdown', onPiecePointerDown)
-        gL.addEventListener('pointermove', onPiecePointerMove)
-        gL.addEventListener('pointerup', onPiecePointerUp)
-        gL.addEventListener('pointercancel', onPiecePointerUp)
-        gR.addEventListener('pointerdown', onPiecePointerDown)
-        gR.addEventListener('pointermove', onPiecePointerMove)
-        gR.addEventListener('pointerup', onPiecePointerUp)
-        gR.addEventListener('pointercancel', onPiecePointerUp)
-        let seg = lastHeightSeg
-        if (!seg) {
-          const sp = verticalSpanInParallelogram(cx)
-          if (sp) seg = { x: cx, yLo: sp.yMin, yHi: sp.yMax }
-        } else {
-          seg = { x: cx, yLo: seg.yLo, yHi: seg.yHi }
+      }
+
+      /** 高线装饰在块上的 x（与 data-seg-x 一致），用于再次剪开时迁移到左/右子块 */
+      function getDecorationSegX (el) {
+        if (!el || !el.getAttribute) return null
+        const ds = el.getAttribute('data-seg-x')
+        if (ds != null && ds !== '') {
+          const v = parseFloat(ds)
+          if (!isNaN(v)) return v
         }
-        if (seg) {
-          const hiPath = document.createElementNS(NS, 'path')
-          hiPath.setAttribute('class', 'user-stroke')
-          hiPath.setAttribute(
-            'd',
-            'M ' + seg.x + ' ' + seg.yLo + ' L ' + seg.x + ' ' + seg.yHi
+        if (el.tagName === 'path') {
+          const d = el.getAttribute('d') || ''
+          const m = d.match(/^\s*M\s*([\d.-]+)/)
+          if (m) return parseFloat(m[1])
+        }
+        if (el.tagName === 'text') {
+          const tx = parseFloat(el.getAttribute('x') || '0')
+          return tx - HEIGHT_LABEL_OFFSET_X
+        }
+        return null
+      }
+
+      function getDecorationSegY (el) {
+        if (!el || !el.getAttribute) return null
+        const ds = el.getAttribute('data-seg-y')
+        if (ds != null && ds !== '') {
+          const v = parseFloat(ds)
+          if (!isNaN(v)) return v
+        }
+        if (el.tagName === 'path') {
+          const d = el.getAttribute('d') || ''
+          let m = d.match(
+            /^\s*M\s*([\d.-]+)\s*([\d.-]+)\s*L\s*([\d.-]+)\s*([\d.-]+)/
           )
-          gR.appendChild(hiPath)
-          if (seg.yLo <= 290 && seg.yHi >= 290 && seg.x >= 97 && seg.x <= 433) {
-            const ra = document.createElementNS(NS, 'path')
-            ra.setAttribute('class', 'right-angle-marker')
-            ra.setAttribute('d', rightAnglePathBottomAt(seg.x))
-            gR.appendChild(ra)
+          if (m) {
+            return (parseFloat(m[2]) + parseFloat(m[4])) / 2
           }
-          setHeightLabel(gR, seg.x, seg.yLo, seg.yHi)
-        } else {
-          removeHeightLabel()
+          m = d.match(/^\s*M\s*([\d.-]+)\s*([\d.-]+)/)
+          if (m) return parseFloat(m[2])
         }
-        paraLayer.appendChild(gL)
-        paraLayer.appendChild(gR)
+        if (el.tagName === 'text') {
+          return parseFloat(el.getAttribute('y') || '0')
+        }
+        return null
+      }
+
+      /**
+       * 再次竖直剪开时，把旧块里已剪过的高线、直角标、「高」字挪到左或右新块（避免随旧组删除）。
+       */
+      function redistributePieceDecorations (oldG, leftG, rightG, cx) {
+        const EPS = 1.5
+        const nodes = []
+        let c = oldG.firstChild
+        while (c) {
+          const next = c.nextSibling
+          if (
+            c.nodeType === 1 &&
+            c.classList &&
+            c.classList.contains('para-piece')
+          ) {
+            c = next
+            continue
+          }
+          if (c.nodeType === 1) nodes.push(c)
+          c = next
+        }
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i]
+          const sx = getDecorationSegX(node)
+          if (sx == null || isNaN(sx)) continue
+          oldG.removeChild(node)
+          if (sx < cx - EPS) {
+            leftG.appendChild(node)
+          } else {
+            rightG.appendChild(node)
+          }
+        }
+      }
+
+      /**
+       * 水平剪开时，按装饰物大致 y 分到上/下块（data-seg-y 或路径/文字推断）。
+       */
+      function redistributePieceDecorationsHorizontal (oldG, topG, botG, hy) {
+        const EPS = 1.5
+        const nodes = []
+        let c = oldG.firstChild
+        while (c) {
+          const next = c.nextSibling
+          if (
+            c.nodeType === 1 &&
+            c.classList &&
+            c.classList.contains('para-piece')
+          ) {
+            c = next
+            continue
+          }
+          if (c.nodeType === 1) nodes.push(c)
+          c = next
+        }
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i]
+          let sy = getDecorationSegY(node)
+          if (sy == null || isNaN(sy)) {
+            const sx = getDecorationSegX(node)
+            if (sx != null && !isNaN(sx)) {
+              for (let j = 0; j < heightSegments.length; j++) {
+                const s = heightSegments[j]
+                if (s.cut || s.x == null) continue
+                if (Math.abs(s.x - sx) < 1 && s.yLo != null && s.yHi != null) {
+                  sy = (s.yLo + s.yHi) / 2
+                  break
+                }
+              }
+            }
+          }
+          if (sy == null || isNaN(sy)) continue
+          oldG.removeChild(node)
+          if (sy < hy - EPS) {
+            topG.appendChild(node)
+          } else {
+            botG.appendChild(node)
+          }
+        }
+      }
+
+      function attachPieceListeners (g) {
+        g.addEventListener('pointerdown', onPiecePointerDown)
+        g.addEventListener('pointermove', onPiecePointerMove)
+        g.addEventListener('pointerup', onPiecePointerUp)
+        g.addEventListener('pointercancel', onPiecePointerUp)
+      }
+
+      function findPieceIndexForVerticalCut (cx) {
+        const EPS = 1e-2
+        for (let i = 0; i < polyPieces.length; i++) {
+          const verts = polyPieces[i].verts
+          let minx = Infinity
+          let maxx = -Infinity
+          for (let j = 0; j < verts.length; j++) {
+            minx = Math.min(minx, verts[j].x)
+            maxx = Math.max(maxx, verts[j].x)
+          }
+          if (cx <= minx + EPS || cx >= maxx - EPS) continue
+          const span = verticalSpanInPolygon(verts, cx)
+          if (span && span.yMax - span.yMin > 1e-4) return i
+        }
+        return -1
+      }
+
+      function findPieceIndexForHorizontalCut (hy) {
+        const EPS = 1e-2
+        const areaMin = 2
+        for (let i = 0; i < polyPieces.length; i++) {
+          const verts = polyPieces[i].verts
+          let miny = Infinity
+          let maxy = -Infinity
+          for (let j = 0; j < verts.length; j++) {
+            miny = Math.min(miny, verts[j].y)
+            maxy = Math.max(maxy, verts[j].y)
+          }
+          if (hy <= miny + EPS || hy >= maxy - EPS) continue
+          const topV = clipPolygonHalfPlaneHorizontal(verts, hy, false)
+          const botV = clipPolygonHalfPlaneHorizontal(verts, hy, true)
+          if (
+            topV.length < 3 ||
+            botV.length < 3 ||
+            Math.abs(polygonSignedArea(topV)) < areaMin ||
+            Math.abs(polygonSignedArea(botV)) < areaMin
+          ) {
+            continue
+          }
+          return i
+        }
+        return -1
+      }
+
+      function getSourceVertsForCut (cx) {
+        const whole = document.getElementById('paraWhole')
+        if (whole) {
+          let minx = Infinity
+          let maxx = -Infinity
+          for (let i = 0; i < PARA_VERTICES.length; i++) {
+            minx = Math.min(minx, PARA_VERTICES[i].x)
+            maxx = Math.max(maxx, PARA_VERTICES[i].x)
+          }
+          const EPS = 1e-2
+          if (cx <= minx + EPS || cx >= maxx - EPS) return null
+          const span = verticalSpanInParallelogram(cx)
+          if (!span || span.yMax - span.yMin < 1e-4) return null
+          return {
+            verts: PARA_VERTICES,
+            pieceIndex: -1,
+            fromWhole: true
+          }
+        }
+        const idx = findPieceIndexForVerticalCut(cx)
+        if (idx < 0) return null
+        return {
+          verts: polyPieces[idx].verts,
+          pieceIndex: idx,
+          fromWhole: false
+        }
+      }
+
+      function getSourceVertsForHorizontalCut (hy) {
+        const whole = document.getElementById('paraWhole')
+        const EPS = 1e-2
+        if (whole) {
+          let miny = Infinity
+          let maxy = -Infinity
+          for (let i = 0; i < PARA_VERTICES.length; i++) {
+            miny = Math.min(miny, PARA_VERTICES[i].y)
+            maxy = Math.max(maxy, PARA_VERTICES[i].y)
+          }
+          if (hy <= miny + EPS || hy >= maxy - EPS) return null
+          return {
+            verts: PARA_VERTICES,
+            pieceIndex: -1,
+            fromWhole: true
+          }
+        }
+        const idx = findPieceIndexForHorizontalCut(hy)
+        if (idx < 0) return null
+        return {
+          verts: polyPieces[idx].verts,
+          pieceIndex: idx,
+          fromWhole: false
+        }
+      }
+
+      /**
+       * 沿当前高线剪开一块；多条高线可依次剪开（每条至多剪一次）。
+       */
+      function applyVerticalSplit (seg) {
+        if (seg.kind === 'slantMidHorizontal') return
+        const cx = clampCutLineX(seg.x)
+        const src = getSourceVertsForCut(cx)
+        if (!src) return
+
+        const verts = src.verts
+        const leftV = clipPolygonHalfPlane(verts, cx, true)
+        const rightV = clipPolygonHalfPlane(verts, cx, false)
+        const areaMin = 2
+        if (
+          leftV.length < 3 ||
+          rightV.length < 3 ||
+          Math.abs(polygonSignedArea(leftV)) < areaMin ||
+          Math.abs(polygonSignedArea(rightV)) < areaMin
+        ) {
+          return
+        }
+
+        if (seg.pathEl && seg.pathEl.parentNode) {
+          seg.pathEl.parentNode.removeChild(seg.pathEl)
+        }
+        if (seg.raEl && seg.raEl.parentNode) {
+          seg.raEl.parentNode.removeChild(seg.raEl)
+        }
+        if (seg.raTopEl && seg.raTopEl.parentNode) {
+          seg.raTopEl.parentNode.removeChild(seg.raTopEl)
+        }
+        if (seg.labelEl && seg.labelEl.parentNode) {
+          seg.labelEl.parentNode.removeChild(seg.labelEl)
+        }
+
+        const leftP = makePieceObject(leftV)
+        const rightP = makePieceObject(rightV)
+        const h = SPLIT_GAP / 2
+        if (src.fromWhole) {
+          leftP.baseTx = -h
+          leftP.baseTy = 0
+          rightP.baseTx = h
+          rightP.baseTy = 0
+          const w = document.getElementById('paraWhole')
+          if (w) w.remove()
+          polyPieces = [leftP, rightP]
+        } else {
+          const old = polyPieces[src.pieceIndex]
+          const otx = old.baseTx != null ? old.baseTx : 0
+          const oty = old.baseTy != null ? old.baseTy : 0
+          leftP.baseTx = otx - h
+          leftP.baseTy = oty
+          rightP.baseTx = otx + h
+          rightP.baseTy = oty
+          const idx = src.pieceIndex
+          const oldG = polyPieces[idx].g
+          redistributePieceDecorations(oldG, leftP.g, rightP.g, cx)
+          oldG.remove()
+          polyPieces.splice(idx, 1, leftP, rightP)
+        }
+
+        paraLayer.appendChild(leftP.g)
+        paraLayer.appendChild(rightP.g)
+        attachPieceListeners(leftP.g)
+        attachPieceListeners(rightP.g)
+
+        sortPiecesLeftToRight()
+
+        const gRight =
+          centroidX(rightV) >= centroidX(leftV) ? rightP.g : leftP.g
+        const hiPath = document.createElementNS(NS, 'path')
+        hiPath.setAttribute('class', 'user-stroke')
+        hiPath.setAttribute('data-seg-x', String(seg.x))
+        hiPath.setAttribute(
+          'data-seg-y',
+          String((seg.yLo + seg.yHi) / 2)
+        )
+        hiPath.setAttribute(
+          'd',
+          'M ' + seg.x + ' ' + seg.yLo + ' L ' + seg.x + ' ' + seg.yHi
+        )
+        gRight.appendChild(hiPath)
+        if (
+          seg.yLo <= 290 &&
+          seg.yHi >= 290 &&
+          seg.x >= 97 &&
+          seg.x <= 433
+        ) {
+          const fx = Math.min(Math.max(seg.x, 97), 433)
+          const ra = document.createElementNS(NS, 'path')
+          ra.setAttribute('class', 'right-angle-marker')
+          ra.setAttribute('data-seg-x', String(seg.x))
+          ra.setAttribute('d', rightAnglePathBottomAt(fx))
+          gRight.appendChild(ra)
+        }
+        if (
+          seg.x > 433 &&
+          seg.x <= CUT_LINE_X_MAX &&
+          Math.min(seg.yLo, seg.yHi) <= TOP_EDGE_Y + 2 &&
+          Math.max(seg.yLo, seg.yHi) >= TOP_EDGE_Y - 2
+        ) {
+          const fx = Math.min(Math.max(seg.x, 187), 523)
+          const raTop = document.createElementNS(NS, 'path')
+          raTop.setAttribute('class', 'right-angle-marker')
+          raTop.setAttribute('data-seg-x', String(seg.x))
+          raTop.setAttribute('d', rightAnglePathTopAt(fx))
+          gRight.appendChild(raTop)
+        }
+        addHeightLabelItem(gRight, seg.x, seg.yLo, seg.yHi)
+
+        seg.cut = true
+        isCut = polyPieces.length >= 2
         svg.classList.add('is-cut')
-        isCut = true
+        applyAllPieceTransforms()
+        updateScissorsEnabled()
+      }
+
+      /**
+       * 沿两腰中点水平线剪开（与竖直剪开共用 baseTx/baseTy 累加方式）。
+       */
+      function applyHorizontalSplit (seg) {
+        if (seg.kind !== 'slantMidHorizontal') return
+        const hy = seg.y
+        const src = getSourceVertsForHorizontalCut(hy)
+        if (!src) return
+
+        const verts = src.verts
+        const topV = clipPolygonHalfPlaneHorizontal(verts, hy, false)
+        const botV = clipPolygonHalfPlaneHorizontal(verts, hy, true)
+        const areaMin = 2
+        if (
+          topV.length < 3 ||
+          botV.length < 3 ||
+          Math.abs(polygonSignedArea(topV)) < areaMin ||
+          Math.abs(polygonSignedArea(botV)) < areaMin
+        ) {
+          return
+        }
+
+        if (seg.pathEl && seg.pathEl.parentNode) {
+          seg.pathEl.parentNode.removeChild(seg.pathEl)
+        }
+        if (seg.raEl && seg.raEl.parentNode) {
+          seg.raEl.parentNode.removeChild(seg.raEl)
+        }
+        if (seg.raTopEl && seg.raTopEl.parentNode) {
+          seg.raTopEl.parentNode.removeChild(seg.raTopEl)
+        }
+        if (seg.labelEl && seg.labelEl.parentNode) {
+          seg.labelEl.parentNode.removeChild(seg.labelEl)
+        }
+
+        const topP = makePieceObject(topV)
+        const botP = makePieceObject(botV)
+        const h = SPLIT_GAP / 2
+
+        if (src.fromWhole) {
+          topP.baseTx = 0
+          topP.baseTy = -h
+          botP.baseTx = 0
+          botP.baseTy = h
+          const w = document.getElementById('paraWhole')
+          if (w) w.remove()
+          polyPieces = [topP, botP]
+        } else {
+          const old = polyPieces[src.pieceIndex]
+          const otx = old.baseTx != null ? old.baseTx : 0
+          const oty = old.baseTy != null ? old.baseTy : 0
+          topP.baseTx = otx
+          topP.baseTy = oty - h
+          botP.baseTx = otx
+          botP.baseTy = oty + h
+          const idx = src.pieceIndex
+          const oldG = polyPieces[idx].g
+          redistributePieceDecorationsHorizontal(oldG, topP.g, botP.g, hy)
+          oldG.remove()
+          polyPieces.splice(idx, 1, topP, botP)
+        }
+
+        paraLayer.appendChild(topP.g)
+        paraLayer.appendChild(botP.g)
+        attachPieceListeners(topP.g)
+        attachPieceListeners(botP.g)
+
+        sortPiecesTopToBottom()
+
+        const topCent = centroidY(topV)
+        const botCent = centroidY(botV)
+        const gTop = topCent <= botCent ? topP.g : botP.g
+        const hiPath = document.createElementNS(NS, 'path')
+        hiPath.setAttribute('class', 'user-stroke')
+        hiPath.setAttribute('data-seg-y', String(hy))
+        hiPath.setAttribute(
+          'data-seg-x',
+          String((seg.xLo + seg.xHi) / 2)
+        )
+        hiPath.setAttribute(
+          'd',
+          'M ' +
+            seg.xLo +
+            ' ' +
+            hy +
+            ' L ' +
+            seg.xHi +
+            ' ' +
+            hy
+        )
+        gTop.appendChild(hiPath)
+
+        seg.cut = true
+        isCut = polyPieces.length >= 2
+        svg.classList.add('is-cut')
+        applyAllPieceTransforms()
+        updateScissorsEnabled()
       }
 
       /** 触发剪开（不再播放画布上的大剪刀动画） */
-      function runScissorsCutAnimation () {
-        if (isCut) return
-        const cx = clampCutLineX(lastCutLineX)
-        scissorsHandle.classList.add('is-disabled')
-        scissorsHandle.setAttribute('aria-disabled', 'true')
-        applyParallelogramSplit(cx)
+      function runScissorsCutAnimation (clientX, clientY) {
+        const seg = findHeightSegmentAt(clientX, clientY)
+        if (!seg) return
+        if (seg.kind === 'slantMidHorizontal') {
+          applyHorizontalSplit(seg)
+        } else {
+          applyVerticalSplit(seg)
+        }
       }
 
       scissorsHandle.addEventListener('pointerdown', onScissorsPointerDown)
@@ -963,6 +1897,7 @@
       })
 
       ensureBottomLabel()
+      updateScissorsEnabled()
     })()
   </script>
 </body>
