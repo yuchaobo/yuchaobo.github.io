@@ -32,7 +32,7 @@
     }
 
     .shell {
-      max-width: min(1400px, 100%);
+      max-width: min(1520px, 100%);
       margin: 0 auto;
       background: #fff;
       border-radius: 16px;
@@ -72,7 +72,7 @@
 
     @media (min-width: 900px) {
       .layout-split {
-        grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
+        grid-template-columns: minmax(0, 3.4fr) minmax(260px, 0.95fr);
       }
     }
 
@@ -86,36 +86,20 @@
       grid-template-columns: 1fr;
     }
 
-    .tip {
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      border-radius: 12px;
-      padding: 0.9rem 1rem;
-      margin-bottom: 1rem;
-      font-size: 0.86rem;
-      color: #713f12;
-    }
-
-    .tip strong {
-      display: block;
-      color: #92400e;
-      margin-bottom: 0.35rem;
-    }
-
     .plot-wrap {
       border: 1px solid #cbd5e1;
       border-radius: 12px;
       background: #f0f7ff;
-      padding: 10px;
-      min-height: min(54vh, 480px);
+      padding: 12px;
+      min-height: min(62vh, 600px);
     }
 
     .plot-wrap svg {
       display: block;
       width: 100%;
       height: auto;
-      min-height: 320px;
-      max-height: min(60vh, 540px);
+      min-height: 420px;
+      max-height: min(72vh, 680px);
       cursor: grab;
       touch-action: none;
     }
@@ -160,6 +144,13 @@
 
     .metric.height .val {
       color: var(--red-h);
+    }
+
+    #mBase,
+    #mSide,
+    #mHeight,
+    #mArea {
+      color: #000000;
     }
 
     .btns {
@@ -292,17 +283,11 @@
   <div class="shell">
     <div class="hero">
       <h1>平行四边形面积公式探究</h1>
-      <p>拖动顶点，观察面积变化，理解正确的面积公式</p>
     </div>
 
     <div class="inner">
       <div class="layout-split">
         <div class="main-col">
-      <div class="tip">
-        <strong>💡 操作提示</strong>
-        拖动C点或D点，观察当底边和邻边长度保持不变时，高度和面积的变化关系。
-      </div>
-
       <div class="plot-wrap">
         <svg id="canvas" viewBox="0 0 680 430" xmlns="http://www.w3.org/2000/svg" aria-label="平行四边形">
           <defs>
@@ -313,20 +298,24 @@
           <rect width="100%" height="100%" fill="url(#smallGrid)" />
 
           <!-- 整图略缩小并略左移 -->
-          <g transform="translate(-18, 8) translate(340, 188) scale(0.9) translate(-340, -188)">
+          <g transform="translate(-18, 8) translate(340, 188) scale(0.96) translate(-340, -188)">
             <g id="figTop" display="none" pointer-events="none">
               <polygon id="paraTop" fill="rgba(139, 122, 184, 0.18)" stroke="#3b82f6" />
               <line id="baseExtendTop" fill="none" stroke="#3b82f6" display="none" />
               <line id="heightLineTop" stroke="#dc2626" />
               <path id="rightAngleHTop" fill="none" stroke="#dc2626" />
-              <text id="lblBaseTop" font-size="14" fill="#2563eb" font-weight="600" text-anchor="middle" />
-              <text id="lblSideTop" font-size="14" fill="#2563eb" font-weight="600" text-anchor="middle" dominant-baseline="central" />
-              <text id="lblHTop" font-size="14" fill="#dc2626" font-weight="700" />
+              <text id="lblBaseTop" font-size="14" fill="#000000" font-weight="600" text-anchor="middle" />
+              <text id="lblSideTop" font-size="14" fill="#000000" font-weight="600" text-anchor="middle" dominant-baseline="central" />
+              <text id="lblHTop" font-size="14" fill="#000000" font-weight="700" />
               <text id="lblATop" font-size="16" font-weight="700" fill="#0f172a">A</text>
               <text id="lblBTop" font-size="16" font-weight="700" fill="#0f172a">B</text>
               <text id="lblCTop" font-size="16" font-weight="700" fill="#0f172a">C</text>
               <text id="lblDTop" font-size="16" font-weight="700" fill="#0f172a">D</text>
               <text id="lblAreaTop" display="none" fill="#047857" font-weight="600" />
+              <g id="hintDemoH" display="none" pointer-events="none">
+                <text id="hintHL1" fill="#2563eb" font-weight="600" text-anchor="end">底边不变</text>
+                <text id="hintHL2" fill="#2563eb" font-weight="600" text-anchor="end">高不变</text>
+              </g>
             </g>
             <g id="figBottom">
             <polygon id="para" fill="rgba(139, 122, 184, 0.22)" stroke="#3b82f6" />
@@ -334,9 +323,9 @@
             <line id="baseExtend" fill="none" stroke="#3b82f6" display="none" />
             <line id="heightLine" stroke="#dc2626" />
             <path id="rightAngleH" fill="none" stroke="#dc2626" />
-            <text id="lblBase" font-size="14" fill="#2563eb" font-weight="600" text-anchor="middle" />
-            <text id="lblSide" font-size="14" fill="#2563eb" font-weight="600" text-anchor="middle" dominant-baseline="central" />
-            <text id="lblH" font-size="14" fill="#dc2626" font-weight="700" />
+            <text id="lblBase" font-size="14" fill="#000000" font-weight="600" text-anchor="middle" />
+            <text id="lblSide" font-size="14" fill="#000000" font-weight="600" text-anchor="middle" dominant-baseline="central" />
+            <text id="lblH" font-size="14" fill="#000000" font-weight="700" />
             <text id="lblA" font-size="16" font-weight="700" fill="#0f172a">A</text>
             <text id="lblB" font-size="16" font-weight="700" fill="#0f172a">B</text>
             <text id="lblC" font-size="16" font-weight="700" fill="#0f172a">C</text>
@@ -344,6 +333,10 @@
             <circle id="handleD" r="5" fill="#7c6bb5" stroke="#fff" stroke-width="1.0" style="cursor:grab" />
             <circle id="handleC" r="5" fill="#7c6bb5" stroke="#fff" stroke-width="1.0" style="cursor:grab" />
             <text id="lblAreaBottom" display="none" fill="#047857" font-weight="600" />
+            <g id="hintDemoPhi" display="none" pointer-events="none">
+              <text id="hintPhiL1" fill="#2563eb" font-weight="600" text-anchor="end">底边不变</text>
+              <text id="hintPhiL2" fill="#2563eb" font-weight="600" text-anchor="end">邻边不变</text>
+            </g>
             </g>
           </g>
         </svg>
@@ -405,7 +398,7 @@
       const BASE_CM = 8
       const SIDE_CM = 6
       /** 图上比例尺（px/cm）；增大则平行四边形等比放大 */
-      const PX_PER_CM = 27
+      const PX_PER_CM = 30
       /** 与 22 对齐时的视觉倍率，用于描边、字号、标注偏移 */
       const VIS = PX_PER_CM / 22
       /** 与 SVG viewBox 宽度一致（根坐标系水平中心） */
@@ -413,7 +406,7 @@
       /** 与 SVG 内 <g> 一致，用于指针坐标与几何局部坐标互转 */
       const G_TX = -18
       const G_TY = 8
-      const G_S = 0.9
+      const G_S = 0.96
       const G_CX = 340
       const G_CY = 188
       const PHI_MIN = 0.06
@@ -437,6 +430,8 @@
       let phiFrozen = phi
       let showTopFig = false
       let demoHActive = false
+      /** 自动演示时：「phiOsc」底/邻不变蓝、高与面积变红；「hFixed」上图仅邻边变红 */
+      let labelColorMode = 'none'
       /** 阶段一结束后为 true：上图用「等高线」参数 dX，邻边长度可变 */
       let topLineMode = false
       let hTopFrozen = 5
@@ -470,9 +465,21 @@
       const lblDTop = document.getElementById('lblDTop')
       const lblAreaBottom = document.getElementById('lblAreaBottom')
       const lblAreaTop = document.getElementById('lblAreaTop')
+      const mBase = document.getElementById('mBase')
+      const mSide = document.getElementById('mSide')
       const mHeight = document.getElementById('mHeight')
       const mArea = document.getElementById('mArea')
       const okFormula = document.getElementById('okFormula')
+      const wrongFormula = document.getElementById('wrongFormula')
+      const hintDemoPhi = document.getElementById('hintDemoPhi')
+      const hintDemoH = document.getElementById('hintDemoH')
+      const hintPhiL1 = document.getElementById('hintPhiL1')
+      const hintPhiL2 = document.getElementById('hintPhiL2')
+      const hintHL1 = document.getElementById('hintHL1')
+      const hintHL2 = document.getElementById('hintHL2')
+      const COLOR_LABEL_BLUE = '#2563eb'
+      const COLOR_LABEL_RED = '#dc2626'
+      const COLOR_LABEL_NEUTRAL = '#000000'
       const svg = document.getElementById('canvas')
 
       function clamp (v, a, b) {
@@ -524,7 +531,84 @@
         return Math.hypot(g.D.x - g.A.x, g.D.y - g.A.y) / PX_PER_CM
       }
 
-      function paintParallelogram (els, g, baseY, withHandles) {
+      /** 面积 = 显示的底（cm）× 显示的高（与标注同为一位小数 cm），保证与图上「底边」「高」及算式一致 */
+      function areaCm2FromDisplayed (g) {
+        const hShown = parseFloat(g.h.toFixed(1), 10)
+        return BASE_CM * hShown
+      }
+
+      function applyFigLabelFills (els, isTopFig) {
+        const blue = COLOR_LABEL_BLUE
+        const red = COLOR_LABEL_RED
+        const neutral = COLOR_LABEL_NEUTRAL
+        /** 拖动 C/D 时与「自动演示」相同：底边、邻边不变为蓝，高随倾角变为红 */
+        const usePhiStyle =
+          labelColorMode === 'phiOsc' ||
+          (labelColorMode === 'none' && dragKind !== null)
+        if (labelColorMode === 'hFixed') {
+          if (isTopFig) {
+            els.lblBase.setAttribute('fill', blue)
+            els.lblSide.setAttribute('fill', red)
+            els.lblH.setAttribute('fill', blue)
+          } else {
+            els.lblBase.setAttribute('fill', blue)
+            els.lblSide.setAttribute('fill', blue)
+            els.lblH.setAttribute('fill', blue)
+          }
+          return
+        }
+        if (usePhiStyle) {
+          if (isTopFig) {
+            els.lblBase.setAttribute('fill', neutral)
+            els.lblSide.setAttribute('fill', neutral)
+            els.lblH.setAttribute('fill', neutral)
+          } else {
+            els.lblBase.setAttribute('fill', blue)
+            els.lblSide.setAttribute('fill', blue)
+            els.lblH.setAttribute('fill', red)
+          }
+          return
+        }
+        els.lblBase.setAttribute('fill', neutral)
+        els.lblSide.setAttribute('fill', neutral)
+        els.lblH.setAttribute('fill', neutral)
+      }
+
+      function applySidebarMetricColors () {
+        const blue = COLOR_LABEL_BLUE
+        const red = COLOR_LABEL_RED
+        const usePhiStyle =
+          labelColorMode === 'phiOsc' ||
+          (labelColorMode === 'none' && dragKind !== null)
+        if (labelColorMode === 'none' && dragKind === null) {
+          mBase.style.color = ''
+          mSide.style.color = ''
+          mHeight.style.color = ''
+          mArea.style.color = ''
+          okFormula.style.color = ''
+          wrongFormula.style.color = ''
+          return
+        }
+        if (usePhiStyle) {
+          mBase.style.color = blue
+          mSide.style.color = blue
+          mHeight.style.color = red
+          mArea.style.color = red
+          okFormula.style.color = red
+          wrongFormula.style.color = blue
+          return
+        }
+        if (labelColorMode === 'hFixed') {
+          mBase.style.color = blue
+          mSide.style.color = blue
+          mHeight.style.color = blue
+          mArea.style.color = blue
+          okFormula.style.color = blue
+          wrongFormula.style.color = blue
+        }
+      }
+
+      function paintParallelogram (els, g, baseY, withHandles, isTopFig) {
         const pts = [g.A, g.B, g.C, g.D].map(function (p) { return p.x + ',' + p.y }).join(' ')
         els.para.setAttribute('points', pts)
         els.para.setAttribute('stroke-width', 2.8 * VIS)
@@ -621,6 +705,8 @@
         els.lblD.setAttribute('font-size', 16 * VIS)
         els.lblD.setAttribute('x', g.D.x - 20 * VIS)
         els.lblD.setAttribute('y', g.D.y - 12 * VIS)
+
+        applyFigLabelFills(els, !!isTopFig)
       }
 
       const bottomEls = {
@@ -655,10 +741,55 @@
         handleC: null
       }
 
+      /** 自动演示：下图左侧蓝字；高不变演示：上图左侧蓝字 */
+      function layoutDemoHintPhi (g) {
+        if (labelColorMode !== 'phiOsc') {
+          hintDemoPhi.setAttribute('display', 'none')
+          return
+        }
+        const minX = Math.min(g.A.x, g.B.x, g.C.x, g.D.x)
+        const minY = Math.min(g.A.y, g.B.y, g.C.y, g.D.y)
+        const maxY = Math.max(g.A.y, g.B.y, g.C.y, g.D.y)
+        const midY = (minY + maxY) / 2
+        const fs = 13 * VIS
+        const gap = 15 * VIS
+        const pad = 14 * VIS
+        const x = minX - pad
+        hintPhiL1.setAttribute('font-size', fs)
+        hintPhiL1.setAttribute('x', x)
+        hintPhiL1.setAttribute('y', midY - gap * 0.5)
+        hintPhiL2.setAttribute('font-size', fs)
+        hintPhiL2.setAttribute('x', x)
+        hintPhiL2.setAttribute('y', midY + gap * 0.5)
+        hintDemoPhi.setAttribute('display', 'inline')
+      }
+
+      function layoutDemoHintH (g) {
+        if (labelColorMode !== 'hFixed' || !showTopFig) {
+          hintDemoH.setAttribute('display', 'none')
+          return
+        }
+        const minX = Math.min(g.A.x, g.B.x, g.C.x, g.D.x)
+        const minY = Math.min(g.A.y, g.B.y, g.C.y, g.D.y)
+        const maxY = Math.max(g.A.y, g.B.y, g.C.y, g.D.y)
+        const midY = (minY + maxY) / 2
+        const fs = 13 * VIS
+        const gap = 15 * VIS
+        const pad = 14 * VIS
+        const x = minX - pad
+        hintHL1.setAttribute('font-size', fs)
+        hintHL1.setAttribute('x', x)
+        hintHL1.setAttribute('y', midY - gap * 0.5)
+        hintHL2.setAttribute('font-size', fs)
+        hintHL2.setAttribute('x', x)
+        hintHL2.setAttribute('y', midY + gap * 0.5)
+        hintDemoH.setAttribute('display', 'inline')
+      }
+
       function layoutAreaFormula (textEl, g) {
         const fs = 15 * VIS
         const hStr = g.h.toFixed(1)
-        const areaStr = (BASE_CM * g.h).toFixed(1)
+        const areaStr = areaCm2FromDisplayed(g).toFixed(1)
         const maxX = Math.max(g.A.x, g.B.x, g.C.x, g.D.x)
         const minY = Math.min(g.A.y, g.B.y, g.C.y, g.D.y)
         const maxY = Math.max(g.A.y, g.B.y, g.C.y, g.D.y)
@@ -671,31 +802,36 @@
         textEl.innerHTML =
           '<tspan x="' + x + '" y="' + startY + '">面积 = 底×高</tspan>' +
           '<tspan x="' + x + '" dy="' + lineGap + '">' + BASE_CM + '×' + hStr + ' = ' + areaStr + ' cm²</tspan>'
+        textEl.setAttribute('fill', labelColorMode === 'hFixed' ? COLOR_LABEL_BLUE : '#047857')
       }
 
       function render () {
         const phiB = (demoHActive && showTopFig) ? phiFrozen : phi
         const gB = geometryAt(phiB, ay0Bottom)
-        paintParallelogram(bottomEls, gB, ay0Bottom, true)
+        paintParallelogram(bottomEls, gB, ay0Bottom, true, false)
+        layoutDemoHintPhi(gB)
 
         if (showTopFig) {
           const gT = topLineMode
             ? geometryTopLine(hTopFrozen, dXTop, ay0Top)
             : geometryAt(phiTop, ay0Top)
-          paintParallelogram(topEls, gT, ay0Top, false)
+          paintParallelogram(topEls, gT, ay0Top, false, true)
           figTop.setAttribute('display', 'inline')
           layoutAreaFormula(lblAreaBottom, gB)
           layoutAreaFormula(lblAreaTop, gT)
+          layoutDemoHintH(gT)
         } else {
           figTop.setAttribute('display', 'none')
           lblAreaBottom.setAttribute('display', 'none')
           lblAreaTop.setAttribute('display', 'none')
+          hintDemoH.setAttribute('display', 'none')
         }
 
-        const area = BASE_CM * gB.h
+        const area = areaCm2FromDisplayed(gB)
         mHeight.textContent = gB.h.toFixed(1) + ' cm'
         mArea.textContent = area.toFixed(1) + ' cm²'
         okFormula.textContent = BASE_CM + ' × ' + gB.h.toFixed(1) + ' = ' + area.toFixed(1) + ' cm²'
+        applySidebarMetricColors()
       }
 
       const k = PX_PER_CM
@@ -757,6 +893,7 @@
 
       function onUp () {
         dragKind = null
+        render()
       }
 
       handleD.addEventListener('mousedown', onDownD)
@@ -783,10 +920,12 @@
           cancelAnimationFrame(demoTimer)
           demoTimer = null
         }
+        labelColorMode = 'none'
       }
 
       document.getElementById('btnDemo').addEventListener('click', function () {
         stopDemo()
+        labelColorMode = 'phiOsc'
         showTopFig = false
         demoHActive = false
         topLineMode = false
@@ -798,6 +937,7 @@
           const t = (now - demoT0) / dur
           if (t >= 1) {
             phi = phi0
+            labelColorMode = 'none'
             render()
             demoTimer = null
             return
@@ -834,6 +974,7 @@
           render()
           return
         }
+        labelColorMode = 'hFixed'
         demoHActive = true
         demoT0 = performance.now()
         const dur = 3600
@@ -846,6 +987,7 @@
             dXTop = dXTo
             demoHActive = false
             demoTimer = null
+            labelColorMode = 'none'
             render()
             return
           }
