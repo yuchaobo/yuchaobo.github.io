@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Canvas</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      height: 100vh;
+      padding: 12px 12px 16px;
+      background: #fff4cc;
+      font-family: "Segoe UI", "PingFang SC", sans-serif;
+    }
+    #gridCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: #f4f6f9;
+      position: relative;
+      z-index: 1;
+    }
+    #lineCanvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 4;
+      pointer-events: none;
+      touch-action: none;
+    }
+    #stage.perimeter-mode {
+      cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23ec4899%22%20d%3D%22M23%202l7%207-3%203-7-7z%22%2F%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M20%205l7%207-1%201-7-7z%22%2F%3E%3Cpath%20fill%3D%22%23eab308%22%20stroke%3D%22%23ca8a04%22%20stroke-width%3D%22.35%22%20d%3D%22M5%2027L21%209l5%205L10%2030z%22%2F%3E%3Cpath%20fill%3D%22%23fef08a%22%20d%3D%22M5%2027L2%2031l3%202%203-3z%22%2F%3E%3Cpath%20fill%3D%22%230f172a%22%20d%3D%22M2%2031L1%2032h2.2L3%2030.5z%22%2F%3E%3C%2Fsvg%3E")
+          2 31,
+        crosshair;
+    }
+    .widgets {
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .measure-panel {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 320px;
+      z-index: 6;
+      pointer-events: auto;
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(241, 251, 255, 0.96);
+      border: 2px solid rgba(34, 211, 238, 0.45);
+      box-shadow: 0 10px 26px rgba(15, 23, 42, 0.18);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    .measure-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      background: #e6fbff;
+      border-bottom: 2px dashed rgba(34, 211, 238, 0.35);
+      color: #0f172a;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .measure-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.98rem;
+      color: #0ea5b7;
+    }
+    .measure-title .measure-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      background: rgba(14, 165, 183, 0.15);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #0ea5b7;
+      font-size: 12px;
+      line-height: 1;
+      border: 1px solid rgba(14, 165, 183, 0.25);
+    }
+    .measure-toggle {
+      font: inherit;
+      border: none;
+      background: transparent;
+      color: #0ea5b7;
+      cursor: pointer;
+      padding: 6px 8px;
+      border-radius: 10px;
+    }
+    .measure-toggle:hover {
+      background: rgba(14, 165, 183, 0.12);
+    }
+    .measure-body {
+      padding: 10px 12px 12px;
+    }
+    .measure-cols {
+      display: grid;
+      grid-template-columns: 1fr 110px 44px;
+      gap: 10px;
+      padding: 0 4px 8px;
+      color: rgba(15, 23, 42, 0.75);
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+    .measure-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 8px 4px 12px;
+      border-bottom: 2px dashed rgba(34, 211, 238, 0.35);
+      border-top: 2px dashed rgba(34, 211, 238, 0.35);
+    }
+    .measure-row {
+      display: grid;
+      grid-template-columns: 1fr 110px 44px;
+      gap: 10px;
+      align-items: center;
+    }
+    .measure-row input {
+      width: 100%;
+      font: inherit;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 2px solid rgba(148, 163, 184, 0.45);
+      background: rgba(255, 255, 255, 0.92);
+      color: #0f172a;
+      outline: none;
+    }
+    .measure-row input:focus {
+      border-color: rgba(14, 165, 183, 0.55);
+      box-shadow: 0 0 0 3px rgba(14, 165, 183, 0.12);
+    }
+    .measure-del {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      border: 2px solid rgba(244, 63, 94, 0.5);
+      background: rgba(255, 255, 255, 0.86);
+      color: rgba(244, 63, 94, 0.95);
+      cursor: pointer;
+      font-size: 22px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .measure-del:hover {
+      background: rgba(244, 63, 94, 0.08);
+      border-color: rgba(244, 63, 94, 0.62);
+    }
+    .measure-panel.collapsed .measure-body {
+      display: none;
+    }
+    .stage-wrap {
+      position: relative;
+      width: 100%;
+      flex: 1 1 auto;
+      min-height: 200px;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+    }
+    .widget {
+      position: absolute;
+      pointer-events: auto;
+      min-width: 48px;
+      min-height: 48px;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .widget svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .widget-body {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+    .widget.dragging .widget-body {
+      cursor: grabbing;
+    }
+    #stage.perimeter-mode .widget,
+    #stage.perimeter-mode .widget-body {
+      cursor: inherit;
+    }
+    #stage.perimeter-mode .widget.dragging .widget-body {
+      cursor: inherit;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: #fff4cc;
+      border-radius: 10px;
+    }
+    .tool {
+      width: 72px;
+      height: 72px;
+      padding: 8px;
+      background: #f5faff;
+      border-radius: 8px;
+      border: 2px solid rgba(59, 130, 246, 0.28);
+      cursor: grab;
+      touch-action: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .tool:hover {
+      border-color: rgba(37, 99, 235, 0.38);
+      background: #eaf3ff;
+    }
+    .tool:active {
+      cursor: grabbing;
+    }
+    .tool svg {
+      max-width: 100%;
+      max-height: 100%;
+      pointer-events: none;
+    }
+    .action-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 10px;
+      flex: 0 0 auto;
+      padding: 10px 12px;
+      background: #fff4cc;
+      border-radius: 10px;
+    }
+    .action-bar button {
+      font: inherit;
+      font-size: 0.9rem;
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(59, 130, 246, 0.28);
+      background: #f5faff;
+      color: #0f172a;
+      cursor: pointer;
+    }
+    .action-bar button:hover {
+      background: #eaf3ff;
+      border-color: rgba(37, 99, 235, 0.38);
+    }
+    .action-bar button.active {
+      background: #dbeafe;
+      border-color: rgba(37, 99, 235, 0.5);
+      color: #0f172a;
+    }
+    .ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.85;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-wrap" id="stage">
+    <canvas id="gridCanvas"></canvas>
+    <canvas id="lineCanvas"></canvas>
+    <div class="widgets" id="widgets"></div>
+    <div class="measure-panel" id="measurePanel">
+      <div class="measure-header">
+        <div class="measure-title"><span class="measure-icon">📋</span>测量记录板</div>
+        <button type="button" class="measure-toggle" id="btnMeasureToggle">收起</button>
+      </div>
+      <div class="measure-body" id="measureBody">
+        <div class="measure-cols">
+          <div>物品名称</div>
+          <div>周长（cm）</div>
+          <div></div>
+        </div>
+        <div class="measure-rows" id="measureRows"></div>
+      </div>
+    </div>
+  </div>
+  <div class="toolbar" id="toolbar">
+    <div class="tool" data-type="leaf" title="树叶">
+      <svg viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M40 8 C12 38 8 72 40 92 C72 72 68 38 40 8 Z" fill="#2d9d5c" stroke="#1e6b3f" stroke-width="2"/>
+        <path d="M40 18 Q28 48 40 78" fill="none" stroke="#1e6b3f" stroke-width="1.5" opacity="0.7"/>
+      </svg>
+    </div>
+    <div class="tool" data-type="triangle" title="直角三角板">
+      <svg viewBox="0 0 100 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polygon points="50,8 6,52 94,52" fill="#e8eef5" stroke="#5a6d8a" stroke-width="2"/>
+        <line x1="50" y1="8" x2="6" y2="52" stroke="#8fa3bd" stroke-width="1"/>
+        <line x1="50" y1="8" x2="94" y2="52" stroke="#8fa3bd" stroke-width="1"/>
+        <line x1="6" y1="52" x2="94" y2="52" stroke="#8fa3bd" stroke-width="1"/>
+        <g stroke="#7d8fa8" stroke-width="0.8">
+          <line x1="50" y1="14" x2="20" y2="44"/>
+          <line x1="50" y1="14" x2="80" y2="44"/>
+        </g>
+      </svg>
+    </div>
+    <div class="tool" data-type="clock" title="圆形时钟">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="50" cy="50" r="44" fill="#f0f4fa" stroke="#4a5f7a" stroke-width="3"/>
+        <g stroke="#6b7c94" stroke-width="1.5" stroke-linecap="round">
+          <line x1="50" y1="12" x2="50" y2="18"/>
+          <line x1="88" y1="50" x2="82" y2="50"/>
+          <line x1="50" y1="88" x2="50" y2="82"/>
+          <line x1="12" y1="50" x2="18" y2="50"/>
+        </g>
+        <line x1="50" y1="50" x2="50" y2="28" stroke="#2c3e50" stroke-width="3" stroke-linecap="round"/>
+        <line x1="50" y1="50" x2="68" y2="50" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="50" cy="50" r="4" fill="#2c3e50"/>
+      </svg>
+    </div>
+    <div class="tool" data-type="tile" title="瓷砖">
+      <svg viewBox="0 0 140 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="tileBase" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#dbeafe"/>
+            <stop offset="1" stop-color="#bfdbfe"/>
+          </linearGradient>
+        </defs>
+        <rect x="10" y="14" width="120" height="62" rx="6" fill="url(#tileBase)"/>
+        <path d="M24 40 C34 26, 50 26, 60 40 S86 54, 102 38" fill="none" stroke="#94a3b8" stroke-width="2.6" stroke-linecap="round" opacity="0.8"/>
+        <path d="M24 54 C36 44, 50 44, 62 54 S90 66, 108 52" fill="none" stroke="#a8b3c4" stroke-width="2.2" stroke-linecap="round" opacity="0.75"/>
+        <path d="M30 30 C40 20, 52 20, 62 30 S84 40, 98 30" fill="none" stroke="#b6c0cf" stroke-width="1.9" stroke-linecap="round" opacity="0.7"/>
+        <g fill="#cbd5e1" opacity="0.8">
+          <circle cx="34" cy="64" r="1.6"/>
+          <circle cx="54" cy="26" r="1.4"/>
+          <circle cx="88" cy="62" r="1.5"/>
+          <circle cx="106" cy="28" r="1.3"/>
+        </g>
+      </svg>
+    </div>
+    <div class="tool" data-type="star" title="五角星">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polygon
+          points="50,8 61,38 94,38 68,58 78,90 50,72 22,90 32,58 6,38 39,38"
+          fill="#f4d03f"
+          stroke="#d4ac0d"
+          stroke-width="2"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </div>
+  </div>
+  <div class="action-bar">
+    <button type="button" id="btnPerimeter">描周长</button>
+    <button type="button" id="btnRuler">小直尺</button>
+    <button type="button" id="btnClear">清除画布</button>
+  </div>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById("gridCanvas");
+      const ctx = canvas.getContext("2d");
+      const stage = document.getElementById("stage");
+      const widgetsLayer = document.getElementById("widgets");
+      const toolbar = document.getElementById("toolbar");
+      const lineCanvas = document.getElementById("lineCanvas");
+      const lineCtx = lineCanvas.getContext("2d");
+      const btnPerimeter = document.getElementById("btnPerimeter");
+      const btnRuler = document.getElementById("btnRuler");
+      const btnClear = document.getElementById("btnClear");
+      const measurePanel = document.getElementById("measurePanel");
+      const btnMeasureToggle = document.getElementById("btnMeasureToggle");
+      const measureRows = document.getElementById("measureRows");
+      const step = 40;
+
+      const strokes = [];
+      let lastStageSize = { w: 0, h: 0 };
+      let perimeterMode = false;
+      let activeStroke = null;
+
+      function clientToStage(clientX, clientY) {
+        const sr = stage.getBoundingClientRect();
+        return { x: clientX - sr.left, y: clientY - sr.top };
+      }
+
+      function pathLength(pts) {
+        let len = 0;
+        for (let i = 1; i < pts.length; i++) {
+          len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        }
+        return len;
+      }
+
+      function distPointSegment(px, py, x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len2 = dx * dx + dy * dy;
+        if (len2 < 1e-10) return Math.hypot(px - x1, py - y1);
+        let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        const qx = x1 + t * dx;
+        const qy = y1 + t * dy;
+        return Math.hypot(px - qx, py - qy);
+      }
+
+      function findStrokeAt(x, y, threshold) {
+        const th = threshold == null ? 12 : threshold;
+        for (let s = strokes.length - 1; s >= 0; s--) {
+          const pts = strokes[s].points;
+          for (let i = 0; i < pts.length - 1; i++) {
+            const d = distPointSegment(x, y, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+            if (d <= th) return strokes[s];
+          }
+        }
+        return null;
+      }
+
+      function addMeasureRow(name, value) {
+        const row = document.createElement("div");
+        row.className = "measure-row";
+
+        const inputName = document.createElement("input");
+        inputName.type = "text";
+        inputName.value = name || "";
+        inputName.placeholder = "物品";
+
+        const inputVal = document.createElement("input");
+        inputVal.type = "number";
+        inputVal.step = "0.1";
+        inputVal.min = "0";
+        inputVal.value = value != null ? String(value) : "";
+        inputVal.placeholder = "0.0";
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "measure-del";
+        del.setAttribute("aria-label", "删除");
+        del.textContent = "×";
+        del.addEventListener("click", function () {
+          inputVal.value = "";
+        });
+
+        row.appendChild(inputName);
+        row.appendChild(inputVal);
+        row.appendChild(del);
+        measureRows.appendChild(row);
+      }
+
+      function initMeasurePanel() {
+        const defaults = ["树叶", "三角尺", "时钟", "瓷砖", "五角星"];
+        defaults.forEach((n) => addMeasureRow(n, ""));
+
+        btnMeasureToggle.addEventListener("click", function () {
+          const collapsed = measurePanel.classList.toggle("collapsed");
+          btnMeasureToggle.textContent = collapsed ? "展开" : "收起";
+        });
+      }
+
+      function redrawLines() {
+        lineCtx.save();
+        lineCtx.setTransform(1, 0, 0, 1, 0, 0);
+        lineCtx.clearRect(0, 0, lineCanvas.width, lineCanvas.height);
+        lineCtx.restore();
+        const dpr = window.devicePixelRatio || 1;
+        lineCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        function paintStroke(pts, alpha) {
+          if (!pts || pts.length < 2) return;
+          lineCtx.beginPath();
+          lineCtx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) {
+            lineCtx.lineTo(pts[i].x, pts[i].y);
+          }
+          if (perimeterMode) {
+            lineCtx.strokeStyle = alpha != null ? "rgba(220, 38, 38, " + alpha + ")" : "#dc2626";
+            lineCtx.lineWidth = 5;
+          } else {
+            lineCtx.strokeStyle = alpha != null ? "rgba(29, 78, 216, " + alpha + ")" : "#1d4ed8";
+            lineCtx.lineWidth = 2.5;
+          }
+          lineCtx.lineJoin = "round";
+          lineCtx.lineCap = "round";
+          lineCtx.stroke();
+        }
+
+        strokes.forEach(function (st) {
+          paintStroke(st.points);
+        });
+        if (activeStroke && activeStroke.points.length >= 2) {
+          paintStroke(activeStroke.points, 0.65);
+        }
+      }
+
+      function syncLineCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        if (lastStageSize.w > 0 && (lastStageSize.w !== w || lastStageSize.h !== h)) {
+          const sx = w / lastStageSize.w;
+          const sy = h / lastStageSize.h;
+          strokes.forEach(function (s) {
+            s.points.forEach(function (p) {
+              p.x *= sx;
+              p.y *= sy;
+            });
+          });
+        }
+        lastStageSize.w = w;
+        lastStageSize.h = h;
+
+        const dpr = window.devicePixelRatio || 1;
+        lineCanvas.width = Math.max(1, Math.floor(w * dpr));
+        lineCanvas.height = Math.max(1, Math.floor(h * dpr));
+        lineCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        redrawLines();
+      }
+
+      function drawGrid() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        const bw = Math.max(1, Math.floor(w * dpr));
+        const bh = Math.max(1, Math.floor(h * dpr));
+        canvas.width = bw;
+        canvas.height = bh;
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        ctx.fillStyle = "#f4f6f9";
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.strokeStyle = "rgba(70, 85, 110, 0.45)";
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= w; x += step) {
+          ctx.beginPath();
+          ctx.moveTo(x + 0.5, 0);
+          ctx.lineTo(x + 0.5, h);
+          ctx.stroke();
+        }
+        for (let y = 0; y <= h; y += step) {
+          ctx.beginPath();
+          ctx.moveTo(0, y + 0.5);
+          ctx.lineTo(w, y + 0.5);
+          ctx.stroke();
+        }
+      }
+
+      function layoutStage() {
+        drawGrid();
+        syncLineCanvas();
+      }
+
+      function straightenStroke(st) {
+        const pts = st.points;
+        if (pts.length < 2) return;
+        const len = pathLength(pts);
+        if (len < 2) return;
+        let sumY = 0;
+        let minX = Infinity;
+        let maxX = -Infinity;
+        for (let i = 0; i < pts.length; i++) {
+          sumY += pts[i].y;
+          minX = Math.min(minX, pts[i].x);
+          maxX = Math.max(maxX, pts[i].x);
+        }
+        const cy = sumY / pts.length;
+        const cx = (minX + maxX) / 2;
+        const half = len / 2;
+        animateStraightenStroke(st, cx, cy, half);
+      }
+
+      function animateStraightenStroke(st, cx, cy, half) {
+        if (!st || !st.points || st.points.length < 2) return;
+        if (st._animating) return;
+        st._animating = true;
+
+        const duration = 850;
+        const dropDuration = 260;
+        const dropDistance = 120;
+        const from = st.points.map((p) => ({ x: p.x, y: p.y }));
+        const n = from.length;
+        const total = pathLength(from);
+        const endA = { x: cx - half, y: cy };
+        const endB = { x: cx + half, y: cy };
+        const endA2 = { x: endA.x, y: endA.y + dropDistance };
+        const endB2 = { x: endB.x, y: endB.y + dropDistance };
+
+        const cum = new Array(n).fill(0);
+        for (let i = 1; i < n; i++) {
+          cum[i] = cum[i - 1] + Math.hypot(from[i].x - from[i - 1].x, from[i].y - from[i - 1].y);
+        }
+        const denom = total > 1e-6 ? total : cum[n - 1] || 1;
+
+        const to = from.map((p, i) => {
+          const t = cum[i] / denom;
+          return {
+            x: endA.x + (endB.x - endA.x) * t,
+            y: endA.y + (endB.y - endA.y) * t,
+          };
+        });
+
+        const t0 = performance.now();
+        function easeInOutCubic(t) {
+          return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        function frame(now) {
+          const raw = (now - t0) / duration;
+          const k = easeInOutCubic(Math.max(0, Math.min(1, raw)));
+          for (let i = 0; i < n; i++) {
+            st.points[i].x = from[i].x + (to[i].x - from[i].x) * k;
+            st.points[i].y = from[i].y + (to[i].y - from[i].y) * k;
+          }
+          redrawLines();
+          if (raw < 1) {
+            requestAnimationFrame(frame);
+          } else {
+            st.points = [endA, endB];
+            redrawLines();
+
+            const t1 = performance.now();
+            function dropFrame(now2) {
+              const raw2 = (now2 - t1) / dropDuration;
+              const k2 = easeInOutCubic(Math.max(0, Math.min(1, raw2)));
+              st.points[0].x = endA.x + (endA2.x - endA.x) * k2;
+              st.points[0].y = endA.y + (endA2.y - endA.y) * k2;
+              st.points[1].x = endB.x + (endB2.x - endB.x) * k2;
+              st.points[1].y = endB.y + (endB2.y - endB.y) * k2;
+              redrawLines();
+              if (raw2 < 1) {
+                requestAnimationFrame(dropFrame);
+              } else {
+                st.points = [endA2, endB2];
+                st._animating = false;
+                redrawLines();
+              }
+            }
+            requestAnimationFrame(dropFrame);
+          }
+        }
+        requestAnimationFrame(frame);
+      }
+
+      layoutStage();
+      window.addEventListener("resize", layoutStage);
+      initMeasurePanel();
+
+      btnPerimeter.addEventListener("click", function () {
+        perimeterMode = !perimeterMode;
+        if (perimeterMode) pinchState = null;
+        btnPerimeter.classList.toggle("active", perimeterMode);
+        stage.classList.toggle("perimeter-mode", perimeterMode);
+      });
+
+      stage.addEventListener(
+        "pointerdown",
+        function (e) {
+          if (e.button !== 0) return;
+          if (e.target.closest("#measurePanel")) return;
+          const pos = clientToStage(e.clientX, e.clientY);
+          if (perimeterMode) {
+            activeStroke = { points: [{ x: pos.x, y: pos.y }] };
+            e.stopPropagation();
+            try {
+              stage.setPointerCapture(e.pointerId);
+            } catch (err) {}
+            return;
+          }
+          if (e.target.closest(".widget")) return;
+          activeStroke = { points: [{ x: pos.x, y: pos.y }] };
+          try {
+            stage.setPointerCapture(e.pointerId);
+          } catch (err) {}
+        },
+        true
+      );
+
+      stage.addEventListener("pointermove", function (e) {
+        if (!activeStroke) return;
+        if (!perimeterMode) return;
+        const pos = clientToStage(e.clientX, e.clientY);
+        const pts = activeStroke.points;
+        const last = pts[pts.length - 1];
+        if (Math.hypot(pos.x - last.x, pos.y - last.y) > 1.5) {
+          pts.push({ x: pos.x, y: pos.y });
+          redrawLines();
+        }
+      });
+
+      function finishStroke(e) {
+        if (!activeStroke) return;
+        try {
+          stage.releasePointerCapture(e.pointerId);
+        } catch (err) {}
+        const pts = activeStroke.points;
+        activeStroke = null;
+        const len = pathLength(pts);
+        const singleTap = pts.length < 2 || len <= 14;
+
+        if (perimeterMode && !singleTap && pts.length >= 2) {
+          strokes.push({ points: pts });
+          redrawLines();
+          return;
+        }
+
+        if (!perimeterMode && len > 14) {
+          redrawLines();
+          return;
+        }
+
+        const cx = pts[0].x;
+        const cy = pts[0].y;
+        const hit = findStrokeAt(cx, cy);
+        if (hit) straightenStroke(hit);
+        else redrawLines();
+      }
+
+      stage.addEventListener("pointerup", finishStroke);
+      stage.addEventListener("pointercancel", finishStroke);
+
+      btnRuler.addEventListener("click", function () {
+        if (perimeterMode) {
+          perimeterMode = false;
+          btnPerimeter.classList.remove("active");
+          stage.classList.remove("perimeter-mode");
+        }
+        const sr = stage.getBoundingClientRect();
+        const ds = defaultSizes.ruler;
+        const w = Math.max(200, Math.round(sr.width * 0.75));
+        const el = createWidget("ruler", sr.width / 2 - w / 2, sr.height / 2 - ds.h / 2);
+        el.style.width = w + "px";
+        el.style.left = sr.width / 2 - w / 2 + "px";
+      });
+
+      btnClear.addEventListener("click", function () {
+        if (perimeterMode) {
+          perimeterMode = false;
+          btnPerimeter.classList.remove("active");
+          stage.classList.remove("perimeter-mode");
+        }
+        activeStroke = null;
+        strokes.length = 0;
+        widgetsLayer.innerHTML = "";
+        redrawLines();
+      });
+
+      const defaultSizes = {
+        leaf: { w: 200, h: 250 },
+        triangle: { w: 220, h: 220 },
+        clock: { w: 240, h: 240 },
+        tile: { w: 320, h: 200 },
+        star: { w: 220, h: 220 },
+        ruler: { w: 1280, h: 96 },
+      };
+
+      function svgRuler() {
+        var mmTotal = 150; // 15cm (刻度长度不变)
+        var pad = 14;
+        // 只加长尺身：在右侧增加空白长度，不增加刻度
+        var bodyExtra = 500;
+        var W = mmTotal + pad * 2 + bodyExtra;
+        var H = 58;
+        var topY = 10;
+        var ticks = "";
+        var labels = "";
+        var i;
+        var x;
+        var usable = W - pad * 2;
+        var scale = usable / mmTotal;
+
+        // ticks on top edge (downwards)
+        for (i = 0; i <= mmTotal; i++) {
+          x = pad + i * scale;
+          var len;
+          var sw;
+          if (i % 10 === 0) {
+            len = 16;
+            sw = 1.15;
+          } else if (i % 5 === 0) {
+            len = 10;
+            sw = 0.65;
+          } else {
+            len = 6;
+            sw = 0.35;
+          }
+          ticks +=
+            '<line x1="' +
+            x +
+            '" y1="' +
+            topY +
+            '" x2="' +
+            x +
+            '" y2="' +
+            (topY + len) +
+            '" stroke="#5c4a38" stroke-width="' +
+            sw +
+            '"/>';
+        }
+
+        // labels under each 1cm tick
+        for (i = 0; i <= mmTotal; i += 10) {
+          x = pad + i * scale;
+          labels +=
+            '<text x="' +
+            x +
+            '" y="50" text-anchor="middle" fill="#5c4a38" font-size="10" font-family="Segoe UI,sans-serif">' +
+            i / 10 +
+            "</text>";
+        }
+
+        return (
+          '<svg viewBox="0 0 ' +
+          W +
+          " " +
+          H +
+          '" xmlns="http://www.w3.org/2000/svg">' +
+          '<rect x="2" y="4" width="' +
+          (W - 4) +
+          '" height="' +
+          (H - 8) +
+          '" rx="3" fill="#f4ebd8" stroke="#8b7355" stroke-width="2"/>' +
+          '<g stroke-linecap="round">' +
+          ticks +
+          labels +
+          "</g></svg>"
+        );
+      }
+
+      function svgForType(type) {
+        switch (type) {
+          case "leaf":
+            return (
+              '<svg viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg">' +
+              '<path d="M40 8 C12 38 8 72 40 92 C72 72 68 38 40 8 Z" fill="#2d9d5c" stroke="#1e6b3f" stroke-width="2"/>' +
+              '<path d="M40 18 Q28 48 40 78" fill="none" stroke="#1e6b3f" stroke-width="1.5" opacity="0.7"/>' +
+              "</svg>"
+            );
+          case "triangle":
+            return (
+              '<svg viewBox="0 0 100 70" xmlns="http://www.w3.org/2000/svg">' +
+              '<polygon points="50,8 6,52 94,52" fill="#e8eef5" stroke="#5a6d8a" stroke-width="2"/>' +
+              '<line x1="50" y1="8" x2="6" y2="52" stroke="#8fa3bd" stroke-width="1"/>' +
+              '<line x1="50" y1="8" x2="94" y2="52" stroke="#8fa3bd" stroke-width="1"/>' +
+              '<line x1="6" y1="52" x2="94" y2="52" stroke="#8fa3bd" stroke-width="1"/>' +
+              '<g stroke="#7d8fa8" stroke-width="0.8">' +
+              '<line x1="50" y1="14" x2="20" y2="44"/><line x1="50" y1="14" x2="80" y2="44"/>' +
+              "</g></svg>"
+            );
+          case "clock":
+            return (
+              '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
+              '<circle cx="50" cy="50" r="44" fill="#f0f4fa" stroke="#4a5f7a" stroke-width="3"/>' +
+              '<g stroke="#6b7c94" stroke-width="1.5" stroke-linecap="round">' +
+              '<line x1="50" y1="12" x2="50" y2="18"/><line x1="88" y1="50" x2="82" y2="50"/>' +
+              '<line x1="50" y1="88" x2="50" y2="82"/><line x1="12" y1="50" x2="18" y2="50"/>' +
+              "</g>" +
+              '<line x1="50" y1="50" x2="50" y2="28" stroke="#2c3e50" stroke-width="3" stroke-linecap="round"/>' +
+              '<line x1="50" y1="50" x2="68" y2="50" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/>' +
+              '<circle cx="50" cy="50" r="4" fill="#2c3e50"/></svg>'
+            );
+          case "tile":
+            return (
+              '<svg viewBox="0 0 140 90" xmlns="http://www.w3.org/2000/svg">' +
+              "<defs>" +
+              '<linearGradient id="tileBase" x1="0" y1="0" x2="0" y2="1">' +
+              '<stop offset="0" stop-color="#dbeafe"/>' +
+              '<stop offset="1" stop-color="#bfdbfe"/>' +
+              "</linearGradient>" +
+              "</defs>" +
+              '<rect x="10" y="14" width="120" height="62" rx="6" fill="url(#tileBase)"/>' +
+              '<path d="M24 40 C34 26, 50 26, 60 40 S86 54, 102 38" fill="none" stroke="#94a3b8" stroke-width="2.6" stroke-linecap="round" opacity="0.8"/>' +
+              '<path d="M24 54 C36 44, 50 44, 62 54 S90 66, 108 52" fill="none" stroke="#a8b3c4" stroke-width="2.2" stroke-linecap="round" opacity="0.75"/>' +
+              '<path d="M30 30 C40 20, 52 20, 62 30 S84 40, 98 30" fill="none" stroke="#b6c0cf" stroke-width="1.9" stroke-linecap="round" opacity="0.7"/>' +
+              '<g fill="#cbd5e1" opacity="0.8">' +
+              '<circle cx="34" cy="64" r="1.6"/>' +
+              '<circle cx="54" cy="26" r="1.4"/>' +
+              '<circle cx="88" cy="62" r="1.5"/>' +
+              '<circle cx="106" cy="28" r="1.3"/>' +
+              "</g></svg>"
+            );
+          case "star":
+            return (
+              '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
+              '<polygon points="50,8 61,38 94,38 68,58 78,90 50,72 22,90 32,58 6,38 39,38" ' +
+              'fill="#f4d03f" stroke="#d4ac0d" stroke-width="2" stroke-linejoin="round"/></svg>'
+            );
+          case "ruler":
+            return svgRuler();
+          default:
+            return "";
+        }
+      }
+
+      let zCounter = 10;
+      let pinchState = null;
+
+      function createWidget(type, left, top) {
+        const ds = defaultSizes[type] || { w: 100, h: 100 };
+        const el = document.createElement("div");
+        el.className = "widget";
+        el.dataset.type = type;
+        el.style.left = left + "px";
+        el.style.top = top + "px";
+        el.style.width = ds.w + "px";
+        el.style.height = ds.h + "px";
+        el.style.zIndex = String(++zCounter);
+
+        const body = document.createElement("div");
+        body.className = "widget-body";
+        body.innerHTML = svgForType(type);
+
+        el.appendChild(body);
+        widgetsLayer.appendChild(el);
+
+        bringToFront(el);
+        bindDrag(el);
+        return el;
+      }
+
+      function bringToFront(el) {
+        el.style.zIndex = String(++zCounter);
+      }
+
+      function bindDrag(widget) {
+        const body = widget.querySelector(".widget-body");
+        body.addEventListener("pointerdown", function (e) {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          bringToFront(widget);
+          widget.classList.add("dragging");
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const sl = widget.offsetLeft;
+          const st = widget.offsetTop;
+
+          function move(ev) {
+            if (pinchState && pinchState.widget === widget) return;
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            widget.style.left = sl + dx + "px";
+            widget.style.top = st + dy + "px";
+          }
+          function up() {
+            widget.classList.remove("dragging");
+            document.removeEventListener("pointermove", move);
+            document.removeEventListener("pointerup", up);
+          }
+          document.addEventListener("pointermove", move);
+          document.addEventListener("pointerup", up);
+        });
+      }
+
+      function touchDist(a, b) {
+        return Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+      }
+
+      function widgetFromPoint(clientX, clientY) {
+        const el = document.elementFromPoint(clientX, clientY);
+        return el && el.closest(".widget");
+      }
+
+      function applyScaledSize(widget, nw, nh, cx, cy) {
+        nw = Math.max(48, Math.min(1600, nw));
+        nh = Math.max(48, Math.min(1600, nh));
+        widget.style.width = nw + "px";
+        widget.style.height = nh + "px";
+        widget.style.left = cx - nw / 2 + "px";
+        widget.style.top = cy - nh / 2 + "px";
+      }
+
+      stage.addEventListener(
+        "touchstart",
+        function (e) {
+          if (perimeterMode) return;
+          if (e.touches.length !== 2) return;
+          const w0 = widgetFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+          const w1 = widgetFromPoint(e.touches[1].clientX, e.touches[1].clientY);
+          if (!w0 || w0 !== w1) return;
+          e.preventDefault();
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          pinchState = {
+            widget: w0,
+            dist0: touchDist(t0, t1),
+            w: w0.offsetWidth,
+            h: w0.offsetHeight,
+            left: w0.offsetLeft,
+            top: w0.offsetTop,
+          };
+          bringToFront(w0);
+        },
+        { passive: false }
+      );
+
+      stage.addEventListener(
+        "touchmove",
+        function (e) {
+          if (perimeterMode) return;
+          if (!pinchState || e.touches.length < 2) return;
+          e.preventDefault();
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          const p = pinchState;
+          const dist = touchDist(t0, t1);
+          const scale = dist / p.dist0;
+          let nw = p.w * scale;
+          let nh = p.h * scale;
+          const cx = p.left + p.w / 2;
+          const cy = p.top + p.h / 2;
+          applyScaledSize(p.widget, nw, nh, cx, cy);
+        },
+        { passive: false }
+      );
+
+      function clearPinchIfEnded(e) {
+        if (!pinchState) return;
+        if (e.touches.length < 2) pinchState = null;
+      }
+      stage.addEventListener("touchend", clearPinchIfEnded);
+      stage.addEventListener("touchcancel", function () {
+        pinchState = null;
+      });
+
+      stage.addEventListener(
+        "wheel",
+        function (e) {
+          if (perimeterMode) return;
+          if (!e.ctrlKey) return;
+          const w = e.target.closest(".widget");
+          if (!w) return;
+          e.preventDefault();
+          bringToFront(w);
+          const cx = w.offsetLeft + w.offsetWidth / 2;
+          const cy = w.offsetTop + w.offsetHeight / 2;
+          const factor = Math.exp(-e.deltaY * 0.002);
+          applyScaledSize(w, w.offsetWidth * factor, w.offsetHeight * factor, cx, cy);
+        },
+        { capture: true, passive: false }
+      );
+
+      let toolbarDrag = null;
+
+      toolbar.addEventListener("pointerdown", function (e) {
+        const tool = e.target.closest(".tool");
+        if (!tool || !tool.dataset.type) return;
+        if (e.button !== 0) return;
+        e.preventDefault();
+
+        const type = tool.dataset.type;
+        const ds = defaultSizes[type];
+        const ghost = document.createElement("div");
+        ghost.className = "ghost";
+        ghost.style.width = ds.w * 0.6 + "px";
+        ghost.style.height = ds.h * 0.6 + "px";
+        ghost.innerHTML = svgForType(type);
+        document.body.appendChild(ghost);
+
+        function posGhost(ev) {
+          ghost.style.left = ev.clientX + "px";
+          ghost.style.top = ev.clientY + "px";
+        }
+        posGhost(e);
+
+        toolbarDrag = { type, ghost, active: true };
+
+        function move(ev) {
+          posGhost(ev);
+        }
+        function up(ev) {
+          document.removeEventListener("pointermove", move);
+          document.removeEventListener("pointerup", up);
+          ghost.remove();
+          toolbarDrag = null;
+
+          const sr = stage.getBoundingClientRect();
+          const x = ev.clientX;
+          const y = ev.clientY;
+          if (x >= sr.left && x <= sr.right && y >= sr.top && y <= sr.bottom) {
+            const left = x - sr.left - ds.w / 2;
+            const top = y - sr.top - ds.h / 2;
+            createWidget(type, left, top);
+          }
+        }
+        document.addEventListener("pointermove", move);
+        document.addEventListener("pointerup", up);
+      });
+    })();
+  </script>
+</body>
+</html>
