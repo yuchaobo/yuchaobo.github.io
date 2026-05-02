@@ -403,10 +403,542 @@
       let lastStageSize = { w: 0, h: 0 };
       let perimeterMode = false;
       let activeStroke = null;
+      let rulerWidget = null;
 
       function clientToStage(clientX, clientY) {
         const sr = stage.getBoundingClientRect();
         return { x: clientX - sr.left, y: clientY - sr.top };
+      }
+
+      /** SVG 用户坐标 → 舞台坐标 */
+      function svgUserToStage(svgRoot, shapeEl, ux, uy) {
+        const svg = shapeEl.ownerSVGElement || svgRoot;
+        if (!svg || !svg.createSVGPoint) {
+          const r = shapeEl.getBoundingClientRect();
+          const sr = stage.getBoundingClientRect();
+          return { x: r.left - sr.left + r.width / 2, y: r.top - sr.top + r.height / 2 };
+        }
+        const p = svg.createSVGPoint();
+        p.x = ux;
+        p.y = uy;
+        const ctm = shapeEl.getScreenCTM();
+        if (!ctm) {
+          const sr = stage.getBoundingClientRect();
+          const r = shapeEl.getBoundingClientRect();
+          return { x: r.left - sr.left + r.width / 2, y: r.top - sr.top + r.height / 2 };
+        }
+        const scr = p.matrixTransform(ctm);
+        const sr = stage.getBoundingClientRect();
+        return { x: scr.x - sr.left, y: scr.y - sr.top };
+      }
+
+      function nearestOnSegment(px, py, ax, ay, bx, by) {
+        const dx = bx - ax;
+        const dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+        if (len2 < 1e-12) return { x: ax, y: ay };
+        let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        return { x: ax + t * dx, y: ay + t * dy };
+      }
+
+      /** 周长描完后自动贴边：仅当笔迹与某物品轮廓的平均距离小于此值时才修正（像素，舞台坐标） */
+      const PERIMETER_CORRECT_MAX_AVG_PX = 80;
+
+      function parseStrokeWidthUser(el) {
+        const raw = el.getAttribute("stroke-width");
+        if (raw == null || raw === "") return 0;
+        const v = parseFloat(raw);
+        return isNaN(v) || v < 0 ? 0 : v;
+      }
+
+      /** 将描边宽度的一半换算到舞台像素（沿本地 x 方向近似，适配缩放/旋转） */
+      function strokeHalfStagePx(svg, shapeEl) {
+        const sw = parseStrokeWidthUser(shapeEl);
+        if (sw <= 1e-9) return 0;
+        const a = svgUserToStage(svg, shapeEl, 0, 0);
+        const b = svgUserToStage(svg, shapeEl, sw / 2, 0);
+        return Math.hypot(b.x - a.x, b.y - a.y);
+      }
+
+      /** 在 widget 的 SVG 中取面积最大的封闭轮廓作为描边吸附目标（时钟上大圆会压过小圆点） */
+      function getOutlineElement(widget) {
+        const svg = widget.querySelector("svg");
+        if (!svg) return null;
+        const candidates = [];
+        svg.querySelectorAll("polygon").forEach((n) => candidates.push(n));
+        svg.querySelectorAll("circle").forEach((n) => candidates.push(n));
+        svg.querySelectorAll("rect").forEach((n) => {
+          const f = n.getAttribute("fill");
+          if (f === "none") return;
+          candidates.push(n);
+        });
+        svg.querySelectorAll("path").forEach((n) => {
+          const f = n.getAttribute("fill");
+          if (f && f !== "none") candidates.push(n);
+        });
+        let best = null;
+        let bestArea = -1;
+        for (let i = 0; i < candidates.length; i++) {
+          const c = candidates[i];
+          try {
+            const bb = c.getBBox();
+            const area = bb.width * bb.height;
+            if (area > bestArea && area > 1) {
+              bestArea = area;
+              best = c;
+            }
+          } catch (e) {}
+        }
+        return best;
+      }
+
+      function nearestOnCircleOutline(svg, circleEl, sx, sy) {
+        const cx = parseFloat(circleEl.getAttribute("cx")) || 0;
+        const cy = parseFloat(circleEl.getAttribute("cy")) || 0;
+        const r = parseFloat(circleEl.getAttribute("r")) || 1;
+        const sw = parseStrokeWidthUser(circleEl);
+        const rout = r + sw / 2;
+        const c = svgUserToStage(svg, circleEl, cx, cy);
+        const rim = svgUserToStage(svg, circleEl, cx + rout, cy);
+        const R = Math.hypot(rim.x - c.x, rim.y - c.y) || 1;
+        const dx = sx - c.x;
+        const dy = sy - c.y;
+        const len = Math.hypot(dx, dy) || 1;
+        return { x: c.x + (dx / len) * R, y: c.y + (dy / len) * R };
+      }
+
+      function parsePolygonPoints(pointsStr) {
+        const pts = [];
+        if (!pointsStr) return pts;
+        const nums = pointsStr
+          .trim()
+          .split(/[\s,]+/)
+          .filter(Boolean)
+          .map(Number);
+        for (let i = 0; i + 1 < nums.length; i += 2) {
+          pts.push({ x: nums[i], y: nums[i + 1] });
+        }
+        return pts;
+      }
+
+      function polygonSignedAreaStage(verts) {
+        let a = 0;
+        const n = verts.length;
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          a += verts[i].x * verts[j].y - verts[j].x * verts[i].y;
+        }
+        return a / 2;
+      }
+
+      /** 多边形填充边界上的最近点，再沿边外法线外移描边宽度的一半，对齐肉眼看到的描边外缘 */
+      function nearestOnPolygonOutline(svg, polyEl, sx, sy) {
+        const raw = polyEl.getAttribute("points");
+        const uv = parsePolygonPoints(raw);
+        if (uv.length < 2) return { x: sx, y: sy };
+        const verts = uv.map(function (q) {
+          return svgUserToStage(svg, polyEl, q.x, q.y);
+        });
+        const ccw = polygonSignedAreaStage(verts) > 0;
+        const off = strokeHalfStagePx(svg, polyEl);
+        let bestX = verts[0].x;
+        let bestY = verts[0].y;
+        let bestD = Infinity;
+        let bestNx = 0;
+        let bestNy = 1;
+        const n = verts.length;
+        for (let i = 0; i < n; i++) {
+          const a = verts[i];
+          const b = verts[(i + 1) % n];
+          const q = nearestOnSegment(sx, sy, a.x, a.y, b.x, b.y);
+          const d = Math.hypot(sx - q.x, sy - q.y);
+          if (d < bestD) {
+            bestD = d;
+            bestX = q.x;
+            bestY = q.y;
+            const edx = b.x - a.x;
+            const edy = b.y - a.y;
+            const elen = Math.hypot(edx, edy) || 1;
+            if (ccw) {
+              bestNx = edy / elen;
+              bestNy = -edx / elen;
+            } else {
+              bestNx = -edy / elen;
+              bestNy = edx / elen;
+            }
+          }
+        }
+        return { x: bestX + bestNx * off, y: bestY + bestNy * off };
+      }
+
+      function nearestOnPathOutline(svg, pathEl, sx, sy) {
+        let total;
+        try {
+          total = pathEl.getTotalLength();
+        } catch (e) {
+          return { x: sx, y: sy };
+        }
+        if (!total || total < 1) return { x: sx, y: sy };
+        const coarse = Math.min(120, Math.max(24, Math.ceil(total / 3)));
+        let bestD = Infinity;
+        let best = { x: sx, y: sy };
+        let bestLen = 0;
+        for (let k = 0; k <= coarse; k++) {
+          const d = (k / coarse) * total;
+          const p = pathEl.getPointAtLength(d);
+          const sp = svgUserToStage(svg, pathEl, p.x, p.y);
+          const dist = Math.hypot(sp.x - sx, sp.y - sy);
+          if (dist < bestD) {
+            bestD = dist;
+            best = sp;
+            bestLen = d;
+          }
+        }
+        const span = total / coarse;
+        const lo = Math.max(0, bestLen - span);
+        const hi = Math.min(total, bestLen + span);
+        const fineSteps = 24;
+        for (let k = 0; k <= fineSteps; k++) {
+          const d = lo + ((hi - lo) * k) / fineSteps;
+          const p = pathEl.getPointAtLength(d);
+          const sp = svgUserToStage(svg, pathEl, p.x, p.y);
+          const dist = Math.hypot(sp.x - sx, sp.y - sy);
+          if (dist < bestD) {
+            bestD = dist;
+            best = sp;
+          }
+        }
+        const off = strokeHalfStagePx(svg, pathEl);
+        if (off <= 1e-9) return best;
+        let bb;
+        try {
+          bb = pathEl.getBBox();
+        } catch (e) {
+          return best;
+        }
+        const ucx = bb.x + bb.width / 2;
+        const ucy = bb.y + bb.height / 2;
+        const cSt = svgUserToStage(svg, pathEl, ucx, ucy);
+        const vx = best.x - cSt.x;
+        const vy = best.y - cSt.y;
+        const vlen = Math.hypot(vx, vy) || 1;
+        return { x: best.x + (vx / vlen) * off, y: best.y + (vy / vlen) * off };
+      }
+
+      function nearestOnRectOutline(svg, rectEl, sx, sy) {
+        const x = parseFloat(rectEl.getAttribute("x")) || 0;
+        const y = parseFloat(rectEl.getAttribute("y")) || 0;
+        const w = parseFloat(rectEl.getAttribute("width")) || 0;
+        const h = parseFloat(rectEl.getAttribute("height")) || 0;
+        const x2 = x + w;
+        const y2 = y + h;
+        const c1 = svgUserToStage(svg, rectEl, x, y);
+        const c2 = svgUserToStage(svg, rectEl, x2, y);
+        const c3 = svgUserToStage(svg, rectEl, x2, y2);
+        const c4 = svgUserToStage(svg, rectEl, x, y2);
+        const verts = [c1, c2, c3, c4];
+        const ccw = polygonSignedAreaStage(verts) > 0;
+        const off = strokeHalfStagePx(svg, rectEl);
+        let bestX = verts[0].x;
+        let bestY = verts[0].y;
+        let bestD = Infinity;
+        let bestNx = 0;
+        let bestNy = 1;
+        for (let i = 0; i < 4; i++) {
+          const a = verts[i];
+          const b = verts[(i + 1) % 4];
+          const q = nearestOnSegment(sx, sy, a.x, a.y, b.x, b.y);
+          const d = Math.hypot(sx - q.x, sy - q.y);
+          if (d < bestD) {
+            bestD = d;
+            bestX = q.x;
+            bestY = q.y;
+            const edx = b.x - a.x;
+            const edy = b.y - a.y;
+            const elen = Math.hypot(edx, edy) || 1;
+            if (ccw) {
+              bestNx = edy / elen;
+              bestNy = -edx / elen;
+            } else {
+              bestNx = -edy / elen;
+              bestNy = edx / elen;
+            }
+          }
+        }
+        return { x: bestX + bestNx * off, y: bestY + bestNy * off };
+      }
+
+      /** 舞台上一点到 widget 轮廓的最近点（无距离限制） */
+      function closestPointOnWidgetOutline(widget, sx, sy) {
+        const svg = widget.querySelector("svg");
+        const outline = getOutlineElement(widget);
+        if (!svg || !outline) return null;
+        const tag = outline.tagName && outline.tagName.toLowerCase();
+        if (tag === "circle") return nearestOnCircleOutline(svg, outline, sx, sy);
+        if (tag === "polygon") return nearestOnPolygonOutline(svg, outline, sx, sy);
+        if (tag === "rect") return nearestOnRectOutline(svg, outline, sx, sy);
+        if (tag === "path") return nearestOnPathOutline(svg, outline, sx, sy);
+        return null;
+      }
+
+      function distancePointToWidgetOutline(widget, sx, sy) {
+        const p = closestPointOnWidgetOutline(widget, sx, sy);
+        if (!p) return Infinity;
+        return Math.hypot(p.x - sx, p.y - sy);
+      }
+
+      /** 仅根据笔迹与轮廓的距离，判断用户想描的是哪一个物品 */
+      function findWidgetForPerimeterCorrection(pts) {
+        if (!pts || pts.length < 2) return null;
+        const widgets = widgetsLayer.querySelectorAll(".widget");
+        let bestW = null;
+        let bestAvg = Infinity;
+        for (let i = 0; i < widgets.length; i++) {
+          const w = widgets[i];
+          let sum = 0;
+          for (let j = 0; j < pts.length; j++) {
+            sum += distancePointToWidgetOutline(w, pts[j].x, pts[j].y);
+          }
+          const avg = sum / pts.length;
+          if (avg < bestAvg) {
+            bestAvg = avg;
+            bestW = w;
+          }
+        }
+        if (!bestW || bestAvg > PERIMETER_CORRECT_MAX_AVG_PX) return null;
+        return bestW;
+      }
+
+      const IDEAL_PERIMETER_STEP_PX = 4;
+      /** 斜接过尖时用角平分方向代替，避免五角星凹角处交点在无穷远 */
+      const POLYGON_MITER_LIMIT = 8;
+
+      function lineIntersection2(px, py, dx, dy, qx, qy, ex, ey) {
+        const cross = dx * ey - dy * ex;
+        if (Math.abs(cross) < 1e-12) return null;
+        const qpx = qx - px;
+        const qpy = qy - py;
+        const t = (qpx * ey - qpy * ex) / cross;
+        return { x: px + t * dx, y: py + t * dy };
+      }
+
+      function edgeOutwardNormal(ax, ay, bx, by, ccw) {
+        const edx = bx - ax;
+        const edy = by - ay;
+        const elen = Math.hypot(edx, edy) || 1;
+        if (ccw) {
+          return { x: edy / elen, y: -edx / elen };
+        }
+        return { x: -edy / elen, y: edx / elen };
+      }
+
+      function pathPointOuterAtLength(svg, pathEl, lenPos) {
+        let total;
+        try {
+          total = pathEl.getTotalLength();
+        } catch (e) {
+          return null;
+        }
+        if (!total || total < 1) return null;
+        const u = ((lenPos % total) + total) % total;
+        const p = pathEl.getPointAtLength(u);
+        const sp = svgUserToStage(svg, pathEl, p.x, p.y);
+        const off = strokeHalfStagePx(svg, pathEl);
+        if (off <= 1e-9) return sp;
+        let bb;
+        try {
+          bb = pathEl.getBBox();
+        } catch (e) {
+          return sp;
+        }
+        const cSt = svgUserToStage(svg, pathEl, bb.x + bb.width / 2, bb.y + bb.height / 2);
+        const vx = sp.x - cSt.x;
+        const vy = sp.y - cSt.y;
+        const vlen = Math.hypot(vx, vy) || 1;
+        return { x: sp.x + (vx / vlen) * off, y: sp.y + (vy / vlen) * off };
+      }
+
+      function sampleCirclePerimeterRing(svg, circleEl) {
+        const cx = parseFloat(circleEl.getAttribute("cx")) || 0;
+        const cy = parseFloat(circleEl.getAttribute("cy")) || 0;
+        const r = parseFloat(circleEl.getAttribute("r")) || 1;
+        const sw = parseStrokeWidthUser(circleEl);
+        const rout = r + sw / 2;
+        const cSt = svgUserToStage(svg, circleEl, cx, cy);
+        const rim = svgUserToStage(svg, circleEl, cx + rout, cy);
+        const R = Math.hypot(rim.x - cSt.x, rim.y - cSt.y) || 1;
+        const circ = 2 * Math.PI * R;
+        const n = Math.max(32, Math.min(160, Math.ceil(circ / IDEAL_PERIMETER_STEP_PX)));
+        const out = [];
+        for (let i = 0; i < n; i++) {
+          const ang = (i / n) * Math.PI * 2;
+          out.push({ x: cSt.x + Math.cos(ang) * R, y: cSt.y + Math.sin(ang) * R });
+        }
+        out.push({ x: out[0].x, y: out[0].y });
+        return out;
+      }
+
+      /**
+       * 描边外轮廓：每条边向内法线方向平移 off 后的直线求交得到斜接角点（与 SVG stroke 外缘一致），
+       * 再在相邻角点间细分。比「边上逐点加法线」在尖角处更准，三角板/五角星角会利落。
+       */
+      function sampleClosedPolygonOffsetRing(svg, strokeSourceEl, verts) {
+        const n = verts.length;
+        if (n < 2) return null;
+        const ccw = polygonSignedAreaStage(verts) > 0;
+        const off = strokeHalfStagePx(svg, strokeSourceEl);
+        const step = IDEAL_PERIMETER_STEP_PX;
+
+        if (off <= 1e-9) {
+          const out = [];
+          for (let i = 0; i < n; i++) {
+            const a = verts[i];
+            const b = verts[(i + 1) % n];
+            const elen = Math.hypot(b.x - a.x, b.y - a.y);
+            const k = Math.max(1, Math.ceil(elen / step));
+            for (let s = 0; s <= k; s++) {
+              if (i > 0 && s === 0) continue;
+              const t = s / k;
+              out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+            }
+          }
+          if (out.length >= 2) {
+            out.push({ x: out[0].x, y: out[0].y });
+          }
+          return out;
+        }
+
+        const miters = [];
+        for (let k = 0; k < n; k++) {
+          const Vp = verts[(k + n - 1) % n];
+          const Vk = verts[k];
+          const Vn = verts[(k + 1) % n];
+          const nIn = edgeOutwardNormal(Vp.x, Vp.y, Vk.x, Vk.y, ccw);
+          const nOut = edgeOutwardNormal(Vk.x, Vk.y, Vn.x, Vn.y, ccw);
+          const dxi = Vk.x - Vp.x;
+          const dyi = Vk.y - Vp.y;
+          const dxo = Vn.x - Vk.x;
+          const dyo = Vn.y - Vk.y;
+          const p0x = Vp.x + nIn.x * off;
+          const p0y = Vp.y + nIn.y * off;
+          const q0x = Vk.x + nOut.x * off;
+          const q0y = Vk.y + nOut.y * off;
+          let M = lineIntersection2(p0x, p0y, dxi, dyi, q0x, q0y, dxo, dyo);
+          if (!M) {
+            const bx = nIn.x + nOut.x;
+            const by = nIn.y + nOut.y;
+            const bl = Math.hypot(bx, by);
+            if (bl > 1e-9) {
+              M = { x: Vk.x + (bx / bl) * off, y: Vk.y + (by / bl) * off };
+            } else {
+              M = { x: Vk.x + nIn.x * off, y: Vk.y + nIn.y * off };
+            }
+          } else {
+            const dist = Math.hypot(M.x - Vk.x, M.y - Vk.y);
+            if (dist > off * POLYGON_MITER_LIMIT) {
+              const bx = nIn.x + nOut.x;
+              const by = nIn.y + nOut.y;
+              const bl = Math.hypot(bx, by);
+              if (bl > 1e-9) {
+                M = { x: Vk.x + (bx / bl) * off, y: Vk.y + (by / bl) * off };
+              }
+            }
+          }
+          miters.push(M);
+        }
+
+        const out = [];
+        for (let k = 0; k < n; k++) {
+          const A = miters[k];
+          const B = miters[(k + 1) % n];
+          const segLen = Math.hypot(B.x - A.x, B.y - A.y);
+          const ns = Math.max(1, Math.ceil(segLen / step));
+          for (let s = 0; s <= ns; s++) {
+            if (k > 0 && s === 0) continue;
+            const t = s / ns;
+            out.push({ x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t });
+          }
+        }
+        if (out.length >= 2) {
+          out.push({ x: out[0].x, y: out[0].y });
+        }
+        return out;
+      }
+
+      function samplePolygonPerimeterRing(svg, polyEl) {
+        const raw = polyEl.getAttribute("points");
+        const uv = parsePolygonPoints(raw);
+        if (uv.length < 2) return null;
+        const verts = uv.map(function (q) {
+          return svgUserToStage(svg, polyEl, q.x, q.y);
+        });
+        return sampleClosedPolygonOffsetRing(svg, polyEl, verts);
+      }
+
+      function sampleRectPerimeterRing(svg, rectEl) {
+        const x = parseFloat(rectEl.getAttribute("x")) || 0;
+        const y = parseFloat(rectEl.getAttribute("y")) || 0;
+        const w = parseFloat(rectEl.getAttribute("width")) || 0;
+        const h = parseFloat(rectEl.getAttribute("height")) || 0;
+        const x2 = x + w;
+        const y2 = y + h;
+        const verts = [
+          svgUserToStage(svg, rectEl, x, y),
+          svgUserToStage(svg, rectEl, x2, y),
+          svgUserToStage(svg, rectEl, x2, y2),
+          svgUserToStage(svg, rectEl, x, y2),
+        ];
+        return sampleClosedPolygonOffsetRing(svg, rectEl, verts);
+      }
+
+      function samplePathPerimeterRing(svg, pathEl) {
+        let total;
+        try {
+          total = pathEl.getTotalLength();
+        } catch (e) {
+          return null;
+        }
+        if (!total || total < 1) return null;
+        const n = Math.max(48, Math.min(200, Math.ceil(total / 2)));
+        const out = [];
+        for (let i = 0; i < n; i++) {
+          const lenPos = (i / n) * total;
+          const p = pathPointOuterAtLength(svg, pathEl, lenPos);
+          if (p) out.push(p);
+        }
+        if (out.length >= 2) {
+          out.push({ x: out[0].x, y: out[0].y });
+        }
+        return out.length >= 2 ? out : null;
+      }
+
+      /** 根据物品生成一整圈理想外轮廓（不沿用用户笔迹形状，只沿用「选中哪个图」） */
+      function buildIdealPerimeterRing(widget) {
+        const svg = widget.querySelector("svg");
+        const outline = getOutlineElement(widget);
+        if (!svg || !outline) return null;
+        const tag = outline.tagName && outline.tagName.toLowerCase();
+        if (tag === "circle") return sampleCirclePerimeterRing(svg, outline);
+        if (tag === "polygon") return samplePolygonPerimeterRing(svg, outline);
+        if (tag === "rect") return sampleRectPerimeterRing(svg, outline);
+        if (tag === "path") return samplePathPerimeterRing(svg, outline);
+        return null;
+      }
+
+      /** 描周长结束：笔迹只用于识别目标物品；红线替换为该物品完整理想轮廓 */
+      function finalizePerimeterStroke(pts) {
+        const widget = findWidgetForPerimeterCorrection(pts);
+        if (!widget) {
+          return pts.map(function (p) {
+            return { x: p.x, y: p.y };
+          });
+        }
+        const ring = buildIdealPerimeterRing(widget);
+        if (ring && ring.length >= 2) return ring;
+        return pts.map(function (p) {
+          return { x: p.x, y: p.y };
+        });
       }
 
       function pathLength(pts) {
@@ -725,7 +1257,8 @@
         const singleTap = pts.length < 2 || len <= 14;
 
         if (perimeterMode && !singleTap && pts.length >= 2) {
-          strokes.push({ points: pts });
+          const fixed = finalizePerimeterStroke(pts);
+          strokes.push({ points: fixed });
           redrawLines();
           return;
         }
@@ -751,12 +1284,20 @@
           btnPerimeter.classList.remove("active");
           stage.classList.remove("perimeter-mode");
         }
+        if (rulerWidget && rulerWidget.parentNode) {
+          rulerWidget.remove();
+          rulerWidget = null;
+          btnRuler.classList.remove("active");
+          return;
+        }
         const sr = stage.getBoundingClientRect();
         const ds = defaultSizes.ruler;
         const w = Math.max(200, Math.round(sr.width * 0.75));
         const el = createWidget("ruler", sr.width / 2 - w / 2, sr.height / 2 - ds.h / 2);
         el.style.width = w + "px";
         el.style.left = sr.width / 2 - w / 2 + "px";
+        rulerWidget = el;
+        btnRuler.classList.add("active");
       });
 
       btnClear.addEventListener("click", function () {
@@ -768,12 +1309,14 @@
         activeStroke = null;
         strokes.length = 0;
         widgetsLayer.innerHTML = "";
+        rulerWidget = null;
+        btnRuler.classList.remove("active");
         redrawLines();
       });
 
       const defaultSizes = {
         leaf: { w: 200, h: 250 },
-        triangle: { w: 220, h: 220 },
+        triangle: { w: 280, h: 280 },
         clock: { w: 240, h: 240 },
         tile: { w: 320, h: 200 },
         star: { w: 220, h: 220 },
