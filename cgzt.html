@@ -119,7 +119,7 @@
         data-shape="ruler"
         role="button"
         tabindex="0"
-        title="点击在画布上显示直尺，再点击隐藏；轻点直尺切换角度，拖动可移动"
+        title="点击在画布下方显示直尺，再点击隐藏；轻点直尺切换角度，拖动可移动"
         aria-label="直尺"
       >直尺</div>
       <div
@@ -139,11 +139,35 @@
         aria-label="红线"
       >红线</div>
       <div
+        class="palette-item palette-item--label"
+        draggable="true"
+        data-shape="label"
+        data-letter="A"
+        title="字母 A：拖到画布上放置，可在画布上拖动"
+        aria-label="字母 A"
+      >A</div>
+      <div
+        class="palette-item palette-item--label"
+        draggable="true"
+        data-shape="label"
+        data-letter="B"
+        title="字母 B：拖到画布上放置，可在画布上拖动"
+        aria-label="字母 B"
+      >B</div>
+      <div
+        class="palette-item palette-item--label"
+        draggable="true"
+        data-shape="label"
+        data-letter="C"
+        title="字母 C：拖到画布上放置，可在画布上拖动"
+        aria-label="字母 C"
+      >C</div>
+      <div
         class="palette-item palette-item--label palette-item--clear"
         id="paletteClear"
         role="button"
         tabindex="0"
-        title="清空画布：移除三角形、叶形、直尺、圆规、红线及辅助线标记"
+        title="清空画布：移除三角形、叶形、直尺、圆规、红线、字母 A/B/C 及辅助线标记"
         aria-label="清除"
       >清除</div>
     </div>
@@ -162,6 +186,8 @@
       /** 叶形在 0–100 归一化坐标内绘制，外接约 86×89；等比缩放后装入此框（画布上为预览控件的 2.5 倍） */
       const LEAF_W = 200;
       const LEAF_H = 207.5;
+      const LABEL_W = 56;
+      const LABEL_H = 64;
 
       /** 画布上 1 cm 的像素长度，与三角形直角边 3k、4k、斜边 5k（k=60）一致，可用直尺读出 3、4、5 cm */
       const PX_PER_CM = TRI_K;
@@ -301,6 +327,18 @@
         ctx.lineJoin = "miter";
         ctx.miterLimit = 3;
         ctx.stroke();
+      }
+
+      function drawLabelStroke(ctx, s) {
+        const letter = s.letter || "?";
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.font = "700 40px system-ui, sans-serif";
+        ctx.fillStyle = STROKE;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(letter, LABEL_W / 2, LABEL_H / 2);
+        ctx.restore();
       }
 
       function rulerAabb(s) {
@@ -865,6 +903,14 @@
         if (s.type === "leaf") {
           return leafOutlineVertsWorld(s);
         }
+        if (s.type === "label") {
+          return [
+            { x: s.x, y: s.y },
+            { x: s.x + LABEL_W, y: s.y },
+            { x: s.x + LABEL_W, y: s.y + LABEL_H },
+            { x: s.x, y: s.y + LABEL_H },
+          ];
+        }
         if (s.type === "ruler") {
           return rulerOutlineVertsWorld(s);
         }
@@ -1034,6 +1080,14 @@
             maxX: s.x + LEAF_W,
             minY: s.y,
             maxY: s.y + LEAF_H,
+          };
+        }
+        if (s.type === "label") {
+          return {
+            minX: s.x,
+            maxX: s.x + LABEL_W,
+            minY: s.y,
+            maxY: s.y + LABEL_H,
           };
         }
         if (s.type === "ruler") {
@@ -1498,6 +1552,9 @@
           const b = rulerAabb(shape);
           return { w: b.maxX - b.minX, h: b.maxY - b.minY };
         }
+        if (shape.type === "label") {
+          return { w: LABEL_W, h: LABEL_H };
+        }
         if (shape.type === "redline") {
           return { w: 0, h: 0 };
         }
@@ -1536,6 +1593,9 @@
             cssX <= s.x + w &&
             cssY <= s.y + h
           ) {
+            if (s.type === "label") {
+              return s.id;
+            }
             const lx = cssX - s.x;
             const ly = cssY - s.y;
             sctx.beginPath();
@@ -1599,6 +1659,8 @@
             drawCompass(ctx, s);
           } else if (s.type === "redline") {
             drawRedLineShape(ctx, s);
+          } else if (s.type === "label") {
+            drawLabelStroke(ctx, s);
           }
           ctx.restore();
         }
@@ -1682,18 +1744,54 @@
 
       canvas.addEventListener("drop", function (e) {
         e.preventDefault();
-        const type = e.dataTransfer.getData("application/x-shape") || e.dataTransfer.getData("text/plain");
-        if (type !== "triangle" && type !== "leaf") return;
+        let type = e.dataTransfer.getData("application/x-shape") || "";
+        let letter = e.dataTransfer.getData("application/x-letter");
+        const plain = e.dataTransfer.getData("text/plain");
+        if (!type && plain && plain.indexOf("label:") === 0) {
+          type = "label";
+          letter = plain.slice(6);
+        } else if (!type) {
+          type = plain;
+        }
+        if (type === "label" && !letter && plain && plain.indexOf("label:") === 0) {
+          letter = plain.slice(6);
+        }
+        if (
+          type !== "triangle" &&
+          type !== "leaf" &&
+          type !== "label"
+        ) {
+          return;
+        }
+        if (type === "label" && !letter) return;
         const p = cssPointFromEvent(e);
-        const { w, h } =
-          type === "triangle"
-            ? { w: TRI_LEG_TOP, h: TRI_LEG_LEFT }
-            : { w: LEAF_W, h: LEAF_H };
+        let w;
+        let h;
+        if (type === "triangle") {
+          w = TRI_LEG_TOP;
+          h = TRI_LEG_LEFT;
+        } else if (type === "leaf") {
+          w = LEAF_W;
+          h = LEAF_H;
+        } else {
+          w = LABEL_W;
+          h = LABEL_H;
+        }
         let x = p.x - w / 2;
         let y = p.y - h / 2;
         x = Math.max(0, Math.min(cssW - w, x));
         y = Math.max(0, Math.min(cssH - h, y));
-        shapes.push({ id: nextId++, type, x, y });
+        if (type === "label") {
+          shapes.push({
+            id: nextId++,
+            type: "label",
+            letter: letter,
+            x: x,
+            y: y,
+          });
+        } else {
+          shapes.push({ id: nextId++, type: type, x: x, y: y });
+        }
         redraw();
       });
 
@@ -1985,11 +2083,16 @@
         } else {
           const cw = cssW > 0 ? cssW : wrap.clientWidth;
           const ch = cssH > 0 ? cssH : wrap.clientHeight;
+          const bottomMargin = 18;
+          const cy = Math.max(
+            RULER_H / 2 + 6,
+            Math.min(ch - RULER_H / 2 - 6, ch - bottomMargin - RULER_H / 2)
+          );
           const r = {
             id: nextId++,
             type: "ruler",
             x: cw / 2,
-            y: ch / 2,
+            y: cy,
             angle: RULER_ANGLE_H,
           };
           shapes.push(r);
@@ -2008,6 +2111,16 @@
               e.preventDefault();
               toggleRulerFromPalette();
             }
+          });
+          return;
+        }
+        if (kind === "label") {
+          const letter = el.getAttribute("data-letter") || "?";
+          el.addEventListener("dragstart", function (e) {
+            e.dataTransfer.setData("application/x-shape", "label");
+            e.dataTransfer.setData("application/x-letter", letter);
+            e.dataTransfer.setData("text/plain", "label:" + letter);
+            e.dataTransfer.effectAllowed = "copy";
           });
           return;
         }
