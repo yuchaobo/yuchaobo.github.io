@@ -230,6 +230,8 @@
 
       /** 吸附参考线扫弧动画时长（圆规绕左脚尖转动右脚画弧） */
       const SWEEP_ANIM_DURATION_MS = 920;
+      /** 虚线扫弧圆心角相对几何 sweep 的缩放（<1 缩短弧长，不影响吸附终点） */
+      const SWEEP_ARC_ANGLE_SCALE = 0.48;
 
       const REDLINE_STROKE_WIDTH = 3;
       const REDLINE_COLOR = "#c62828";
@@ -274,7 +276,10 @@
       /** 吸附到辅助线的标记：x 为脚上一点的参考线 x；pivot 为该次吸附时左脚尖（左腿）世界坐标，作圆弧圆心 */
       /** @type {{ x: number; pivotX: number; pivotY: number }[]} */
       let guideLineMarks = [];
-      /** 圆规吸附参考线时：绕左脚枢轴刚体转动（参考姿态 toSt），右脚沿虚线弧；上下半段各半时长 */
+      /** 用户在底部参考线上点击放置的基准点（仅 x，y 与辅助线一致；绘制成向上短竖线） */
+      /** @type {{ x: number }[]} */
+      let guideLineRefDots = [];
+      /** 圆规吸附参考线时：绕左脚枢轴刚体转动；扫弧为劣弧，端点「参考线上方 → 下方」，canvas 按最短劣弧方向绘制 */
       /** @type {{
        *   pivotX: number;
        *   pivotY: number;
@@ -283,17 +288,21 @@
        *   deltaA: number;
        *   overlayArcDelta?: number;
        *   refRightAngle: number;
+       *   sweepArcStart: number;
+       *   sweepArcDeltaMinor: number;
+       *   sweepArcAnticlockwise: boolean;
        *   t0: number;
        *   duration: number;
-       *   halfMs: number;
        *   raf: number;
        *   compassId?: number;
        *   fromSt?: { x: number; y: number; angle: number; spread: number };
        *   toSt?: { x: number; y: number; angle: number; spread: number };
        * } | null} */
       let guideSweepAnim = null;
-      /** 圆规标记与左侧固定参考点距离小于此值（px）时用参考点样式 */
+      /** 用户点在参考线上时与圆规脚标记的 x 差小于此值（px）时，用同一样式的短竖线标记 */
       const GUIDE_REF_MARK_COINCIDE = 9;
+      /** 参考线基准短竖线：自参考线向上画，长度（px），不向参考线下方延伸 */
+      const GUIDE_REF_TICK_LEN_PX = 12;
       /** 参考线上「点旁弧」的目标弧长（像素），半径变化时调整圆心角保持弧长相近 */
       const GUIDE_MARK_ARC_LENGTH_PX = 30;
       /** @type {"L" | "R" | null} */
@@ -672,17 +681,17 @@
       }
 
       /**
-       * 辅助线上至少 4 个标记（三段）时，用箭头连接三角形三边中点与对应线段：
-       * 斜边 → 最左段，顶边 → 中段（内侧弧），左竖边 → 最右段（外侧大包络弧）；两直角边弧线从三角形上方绕过、彼此不交。
+       * 参考线上按圆规脚印排序后的前若干 x 定义线段中点；按标记条数逐步画箭头（不一次画全）：
+       * ≥2 条：斜边 → 最左段（直线箭头）；≥3：再加顶边 → 中段（内侧弧）；≥4：再加左竖边 → 最右段（外侧弧）。
+       * 标记顺序建议：先斜边、再顶边、最后左侧直角边。
        */
       function drawCompassGuideMappingArrows(ctx, tri, gy, marks) {
-        if (!marks || marks.length < 4) return;
-        const xs = guideMarksSortedFootXs(marks);
-        const segCx = [
-          (xs[0] + xs[1]) * 0.5,
-          (xs[1] + xs[2]) * 0.5,
-          (xs[2] + xs[3]) * 0.5,
-        ];
+        if (!marks || marks.length < 2) return;
+        const xsAll = guideMarksSortedFootXs(marks);
+        if (xsAll.length < 2) return;
+        const reveal =
+          xsAll.length >= 4 ? 3 : xsAll.length >= 3 ? 2 : 1;
+        const xs = xsAll;
         const tipY = gy - 2;
         const x0 = tri.x;
         const y0 = tri.y;
@@ -693,9 +702,15 @@
           x: x0 + TRI_LEG_TOP * 0.5,
           y: y0 + TRI_LEG_LEFT * 0.5,
         };
-        const endHyp = { x: segCx[0], y: tipY };
-        const endTop = { x: segCx[1], y: tipY };
-        const endLeft = { x: segCx[2], y: tipY };
+        const endHyp = { x: (xs[0] + xs[1]) * 0.5, y: tipY };
+        const endTop =
+          reveal >= 2
+            ? { x: (xs[1] + xs[2]) * 0.5, y: tipY }
+            : null;
+        const endLeft =
+          reveal >= 3
+            ? { x: (xs[2] + xs[3]) * 0.5, y: tipY }
+            : null;
         /** 内弧（顶边）与左竖边外弧分开计算，避免两弧因比例绑定而交叉 */
         const H_inner = Math.max(78, TRI_LEG_TOP * 0.34, TRI_LEG_LEFT * 0.38);
         const gapPeak = Math.max(92, TRI_LEG_LEFT * 0.48, TRI_LEG_TOP * 0.22);
@@ -763,32 +778,36 @@
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
 
-        /** 内侧弧（顶边 → 中段）：比外侧略低，仍从三角形上方明显抬高 */
-        drawCubicArrow(
-          midTop.x,
-          midTop.y,
-          midTop.x,
-          y0 - H_inner,
-          endTop.x,
-          y0 - H_inner * 0.96,
-          endTop.x,
-          endTop.y
-        );
-
-        /** 外侧弧：整体更高；P1 快速抬高；P2 靠近终点且保持高位，弧线“顶”久一点再落向标注 */
-        drawCubicArrow(
-          midLeft.x,
-          midLeft.y,
-          x0 - Math.max(112, TRI_LEG_LEFT * 0.58),
-          y0 - H_outerDraw * 0.68,
-          endLeft.x * 0.87 + midLeft.x * 0.13 - 22,
-          y0 - H_outerDraw * 0.97,
-          endLeft.x,
-          endLeft.y
-        );
-
-        /** 斜边 → 最左段：近似指向对应线段的短箭头 */
-        drawLineArrow(midHyp.x, midHyp.y, endHyp.x, endHyp.y);
+        /** 1）斜边 → 最左段 */
+        if (reveal >= 1) {
+          drawLineArrow(midHyp.x, midHyp.y, endHyp.x, endHyp.y);
+        }
+        /** 2）顶边 → 中段（内侧弧） */
+        if (reveal >= 2 && endTop != null) {
+          drawCubicArrow(
+            midTop.x,
+            midTop.y,
+            midTop.x,
+            y0 - H_inner,
+            endTop.x,
+            y0 - H_inner * 0.96,
+            endTop.x,
+            endTop.y
+          );
+        }
+        /** 3）左竖边 → 最右段（外侧大包络弧） */
+        if (reveal >= 3 && endLeft != null) {
+          drawCubicArrow(
+            midLeft.x,
+            midLeft.y,
+            x0 - Math.max(112, TRI_LEG_LEFT * 0.58),
+            y0 - H_outerDraw * 0.68,
+            endLeft.x * 0.87 + midLeft.x * 0.13 - 22,
+            y0 - H_outerDraw * 0.97,
+            endLeft.x,
+            endLeft.y
+          );
+        }
 
         ctx.restore();
       }
@@ -953,6 +972,29 @@
           { x: tri.x + TRI_LEG_TOP, y: tri.y },
           { x: tri.x, y: tri.y + TRI_LEG_LEFT },
         ];
+      }
+
+      /**
+       * 两脚尖均贴近三角形「上面水平直角边」V0–V1 时，绘制上对调木腿/钢腿外观（移开即恢复）。
+       */
+      function compassTipsNearTriangleTopHorizontalEdge(cmp) {
+        const tips = compassTipsWorld(cmp);
+        const tol = COMPASS_EDGE_SNAP_TIP;
+        for (let i = 0; i < shapes.length; i++) {
+          const tri = shapes[i];
+          if (tri.type !== "triangle") continue;
+          const V = triangleVertsWorld(tri);
+          const ax = V[0].x;
+          const ay = V[0].y;
+          const bx = V[1].x;
+          const by = V[1].y;
+          const dL = distPointSeg(tips.L.x, tips.L.y, ax, ay, bx, by);
+          const dR = distPointSeg(tips.R.x, tips.R.y, ax, ay, bx, by);
+          if (dL <= tol && dR <= tol) {
+            return true;
+          }
+        }
+        return false;
       }
 
       function cubicBezierPoint(ax, ay, bx, by, cx, cy, dx, dy, t) {
@@ -1426,12 +1468,17 @@
         return cssH * COMPASS_GUIDE_Y_RATIO;
       }
 
-      /** 底部参考线左侧固定基准点的 x（与绘制一致：约在辅助线段长的 1/4 处） */
-      function guideLineRefPointX() {
-        return Math.max(
-          48,
-          Math.min(10 + (cssW - 20) * 0.25, cssW - 48)
-        );
+      /** 命中底部参考线线段（约 x∈[10,cssW-10], y=gy）旁的带状区域，用于点击加点 */
+      function hitBottomGuideLineBand(px, py, padY, padX) {
+        if (!bottomGuideLineShown) return false;
+        const gy = bottomGuideLineY();
+        const py0 = padY != null ? padY : 14;
+        const px0 = padX != null ? padX : 8;
+        const gl = 10;
+        const gr = cssW - 10;
+        if (Math.abs(py - gy) > py0) return false;
+        if (px < gl - px0 || px > gr + px0) return false;
+        return true;
       }
 
       /**
@@ -1455,31 +1502,72 @@
         return a + d * t;
       }
 
+      /** 角度归一化到 [0, 2π)（与 canvas arc 一致） */
+      function normAngle0(a) {
+        let x = a % (Math.PI * 2);
+        if (x < 0) {
+          x += Math.PI * 2;
+        }
+        return x;
+      }
+
+      /** 右脚尖 y：枢轴 (px,py)、半径 r、极角 ang（canvas arc 约定） */
+      function compassRightFootYAtAngle(px, py, r, ang) {
+        return py + r * Math.sin(ang);
+      }
+
       /**
-       * 扫弧动画在时刻 timeMs 的右脚极角、canvas arc 方向及已过时间（与虚线弧、圆规姿态共用）。
+       * 在两极角之间沿劣弧插值（最短路径，转角 ∈ (−π, π]）。
+       */
+      function minorArcDelta(s, e) {
+        s = normAngle0(s);
+        e = normAngle0(e);
+        let d = e - s;
+        if (d > Math.PI) {
+          d -= Math.PI * 2;
+        }
+        if (d <= -Math.PI) {
+          d += Math.PI * 2;
+        }
+        return d;
+      }
+
+      /**
+       * 扫弧端点排序：优先「一脚在参考线上方、一脚在下方」；否则按脚上 y 从小到大（上→下）。
+       */
+      function guideSweepOrderEndpointsAboveToBelow(px, py, r, gy, af, at) {
+        const yf = compassRightFootYAtAngle(px, py, r, af);
+        const yt = compassRightFootYAtAngle(px, py, r, at);
+        const fAbove = yf < gy - 1e-6;
+        const fBelow = yf > gy + 1e-6;
+        const tAbove = yt < gy - 1e-6;
+        const tBelow = yt > gy + 1e-6;
+        if (fAbove && tBelow) {
+          return { start: af, end: at };
+        }
+        if (tAbove && fBelow) {
+          return { start: at, end: af };
+        }
+        if (yf <= yt) {
+          return { start: af, end: at };
+        }
+        return { start: at, end: af };
+      }
+
+      /**
+       * 扫弧动画在时刻 timeMs 的右脚极角、已过时间。
+       * 弧为劣弧：起点终点由 guideSweepOrderEndpointsAboveToBelow 排序（参考线上方 → 下方），
+       * 转角用 minorArcDelta；canvas 绘制与 sweepArcAnticlockwise 一致。
        */
       function guideSweepAnimSample(g, timeMs) {
         const elapsed = timeMs - g.t0;
-        const half = g.halfMs != null ? g.halfMs : g.duration * 0.5;
-        const sweep =
-          g.overlayArcDelta != null ? g.overlayArcDelta : g.deltaA;
-        const upSweep = -sweep;
-        let endA;
-        let anticlockwise;
-        if (elapsed < half) {
-          const tp = Math.min(1, elapsed / half);
-          const ease = easeSweepAnim(tp);
-          endA = g.a0 + upSweep * ease;
-          anticlockwise = upSweep < 0;
-        } else {
-          const tp = Math.min(1, (elapsed - half) / half);
-          const ease = easeSweepAnim(tp);
-          endA = g.a0 + sweep * ease;
-          anticlockwise = sweep < 0;
-        }
+        const tp = Math.min(1, elapsed / g.duration);
+        const ease = easeSweepAnim(tp);
+        const start = g.sweepArcStart;
+        const delta = g.sweepArcDeltaMinor;
+        const endA = start + delta * ease;
         return {
           endA: endA,
-          anticlockwise: anticlockwise,
           elapsed: elapsed,
         };
       }
@@ -1614,34 +1702,25 @@
           return;
         }
         if (g.fromSt != null && g.toSt != null) {
-          const half = g.halfMs != null ? g.halfMs : g.duration * 0.5;
+          const t = Math.min(1, sample.elapsed / g.duration);
+          const ease = easeSweepAnim(t);
           const a = g.fromSt;
           const b = g.toSt;
-          if (sample.elapsed < half) {
-            cmp.x = a.x;
-            cmp.y = a.y;
-            cmp.angle = a.angle;
-            cmp.spread = a.spread;
-          } else {
-            const t = Math.min(1, (sample.elapsed - half) / half);
-            const ease = easeSweepAnim(t);
-            cmp.x = a.x + (b.x - a.x) * ease;
-            cmp.y = a.y + (b.y - a.y) * ease;
-            cmp.spread = Math.max(
-              COMPASS_MIN_SPREAD,
-              Math.min(
-                COMPASS_MAX_SPREAD,
-                a.spread + (b.spread - a.spread) * ease
-              )
-            );
-            cmp.angle = angleLerpRad(a.angle, b.angle, ease);
-          }
+          cmp.x = a.x + (b.x - a.x) * ease;
+          cmp.y = a.y + (b.y - a.y) * ease;
+          cmp.spread = Math.max(
+            COMPASS_MIN_SPREAD,
+            Math.min(
+              COMPASS_MAX_SPREAD,
+              a.spread + (b.spread - a.spread) * ease
+            )
+          );
+          cmp.angle = angleLerpRad(a.angle, b.angle, ease);
         }
       }
 
       /**
-       * 吸附成功后：左脚尖扎在吸附点不动，整支圆规绕该点刚体转动（与画圆一致），右脚尖沿虚线弧运动；
-       * 半径为吸附后两脚距 r，总时长 SWEEP_ANIM_DURATION_MS。
+       * 吸附成功后：扫弧为劣弧，端点顺序为参考线上方→下方；canvas 沿最短劣弧绘制（必要时 anticlockwise）；左脚扎针刚体转动。
        */
       function beginGuideSweepAnimation(
         tipsBefore,
@@ -1703,7 +1782,19 @@
                   : -1;
           overlayArcDelta = dir * 0.42;
         }
-        const halfMs = SWEEP_ANIM_DURATION_MS * 0.5;
+        const gyLine = bottomGuideLineY();
+        const arcSweep = overlayArcDelta * SWEEP_ARC_ANGLE_SCALE;
+        const arcFrom = a0 - arcSweep;
+        const arcTo = a0 + arcSweep;
+        const ord = guideSweepOrderEndpointsAboveToBelow(
+          px,
+          py,
+          r,
+          gyLine,
+          arcFrom,
+          arcTo
+        );
+        const dMinor = minorArcDelta(ord.start, ord.end);
         guideSweepAnim = {
           pivotX: px,
           pivotY: py,
@@ -1712,9 +1803,11 @@
           deltaA: deltaA,
           overlayArcDelta: overlayArcDelta,
           refRightAngle: a1,
+          sweepArcStart: ord.start,
+          sweepArcDeltaMinor: dMinor,
+          sweepArcAnticlockwise: dMinor < 0,
           t0: performance.now(),
           duration: SWEEP_ANIM_DURATION_MS,
-          halfMs: halfMs,
           raf: 0,
           compassId: compassId,
           fromSt: fromSt,
@@ -1755,21 +1848,31 @@
           return;
         }
         const g = guideSweepAnim;
-        const { endA, anticlockwise } = guideSweepAnimSample(
-          g,
-          performance.now()
+        const tp = Math.min(
+          1,
+          (performance.now() - g.t0) / g.duration
         );
+        const ease = easeSweepAnim(tp);
+        const endDraw =
+          g.sweepArcStart + g.sweepArcDeltaMinor * ease;
         ctx.save();
         ctx.strokeStyle = "rgba(25, 85, 165, 0.92)";
         ctx.lineWidth = 4.5;
         ctx.lineCap = "round";
         ctx.setLineDash([10, 7]);
         ctx.beginPath();
-        ctx.arc(g.pivotX, g.pivotY, g.r, g.a0, endA, anticlockwise);
+        ctx.arc(
+          g.pivotX,
+          g.pivotY,
+          g.r,
+          g.sweepArcStart,
+          endDraw,
+          g.sweepArcAnticlockwise
+        );
         ctx.stroke();
         ctx.setLineDash([]);
-        const hx = g.pivotX + g.r * Math.cos(endA);
-        const hy = g.pivotY + g.r * Math.sin(endA);
+        const hx = g.pivotX + g.r * Math.cos(endDraw);
+        const hy = g.pivotY + g.r * Math.sin(endDraw);
         ctx.fillStyle = "rgba(230, 105, 35, 0.95)";
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 2;
@@ -1805,7 +1908,7 @@
       /**
        * 两脚贴近水平辅助线时：取 ang 为 0 或 π 使两腿尖同高落在 y=gy，并调整铰链 y。
        * 首次吸附记录左右两 x；之后左脚尖须贴近上一「右脚标记」x，再吸附并只追加新右脚 x。
-       * 若左脚尖靠近参考线左侧固定蓝点，则优先吸附到该点。
+       * 若左脚尖靠近用户在参考线上点击放置的基准点，则优先吸附到该点。
        */
       function trySnapCompassToBottomGuide(cmp) {
         if (!bottomGuideLineShown) return false;
@@ -1825,9 +1928,20 @@
         const ang = Math.abs(cur) < Math.abs(cur - Math.PI) ? 0 : Math.PI;
         const margin = COMPASS_LEG_LEN + COMPASS_HINGE_R;
         const mar = margin * 0.15;
-        const refX = guideLineRefPointX();
-        const distToRef = Math.hypot(tips.L.x - refX, tips.L.y - gy);
-        const nearRef = distToRef <= COMPASS_GUIDE_REF_SNAP;
+        let refAnchorX = null;
+        let bestRefD = 1e9;
+        for (let ri = 0; ri < guideLineRefDots.length; ri++) {
+          const d = Math.hypot(
+            tips.L.x - guideLineRefDots[ri].x,
+            tips.L.y - gy
+          );
+          if (d < bestRefD) {
+            bestRefD = d;
+            refAnchorX = guideLineRefDots[ri].x;
+          }
+        }
+        const nearRef =
+          refAnchorX != null && bestRefD <= COMPASS_GUIDE_REF_SNAP;
 
         /**
          * 将左脚尖落在 (anchorX, gy)，与链式吸附同验算。
@@ -1862,7 +1976,7 @@
         }
 
         if (nearRef) {
-          const tips2 = trySnapCompassAtAnchor(refX);
+          const tips2 = trySnapCompassAtAnchor(refAnchorX);
           if (tips2) {
             if (guideLineMarks.length >= 2) {
               guideLineMarks.push({
@@ -1946,15 +2060,20 @@
         const uyr = ry1 / L;
         const pxr = -uyr;
         const pyr = uxr;
-        /** 左侧金属腿用 lx 方向量；右侧木质腿用 rx 方向量 */
-        const umx = uxl;
-        const umy = uyl;
-        const pmx = pxl;
-        const pmy = pyl;
-        const uwx = uxr;
-        const uwy = uyr;
-        const pwx = pxr;
-        const pwy = pyr;
+        /** 木质腿沿 wv、金属腿沿 sv；贴顶水平直角边时 wv/sv 与 lx/rx 对调以交换两腿外观 */
+        const swapLegsDraw = compassTipsNearTriangleTopHorizontalEdge(s);
+        const wvx = swapLegsDraw ? lx1 : rx1;
+        const wvy = swapLegsDraw ? ly1 : ry1;
+        const svx = swapLegsDraw ? rx1 : lx1;
+        const svy = swapLegsDraw ? ry1 : ly1;
+        const wux = swapLegsDraw ? uxl : uxr;
+        const wuy = swapLegsDraw ? uyl : uyr;
+        const wpx = swapLegsDraw ? pxl : pxr;
+        const wpy = swapLegsDraw ? pyl : pyr;
+        const sux = swapLegsDraw ? uxr : uxl;
+        const suy = swapLegsDraw ? uyr : uyl;
+        const spx = swapLegsDraw ? pxr : pxl;
+        const spy = swapLegsDraw ? pyr : pyl;
 
         ctx.save();
         ctx.translate(s.x, s.y);
@@ -1979,8 +2098,8 @@
         ctx.stroke();
 
         const woodEnd = 0.84;
-        const wex = rx1 * woodEnd;
-        const wey = ry1 * woodEnd;
+        const wex = wvx * woodEnd;
+        const wey = wvy * woodEnd;
         ctx.lineWidth = 9;
         ctx.strokeStyle = "#8b6644";
         ctx.beginPath();
@@ -1991,12 +2110,12 @@
         ctx.strokeStyle = "#d4a574";
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.lineTo(rx1 * 0.82, ry1 * 0.82);
+        ctx.lineTo(wvx * 0.82, wvy * 0.82);
         ctx.stroke();
 
-        const la = Math.atan2(rx1, ry1);
+        const la = Math.atan2(wvx, wvy);
         ctx.save();
-        ctx.translate(rx1 * 0.89, ry1 * 0.89);
+        ctx.translate(wvx * 0.89, wvy * 0.89);
         ctx.rotate(la);
         ctx.fillStyle = "#9a9ea6";
         ctx.strokeStyle = "#5a5e68";
@@ -2013,32 +2132,32 @@
         ctx.strokeStyle = "#6a4a30";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(rx1 * tWood0 + pwx * hw0, ry1 * tWood0 + pwy * hw0);
-        ctx.lineTo(rx1 * tWood0 - pwx * hw0, ry1 * tWood0 - pwy * hw0);
-        ctx.lineTo(rx1 * tWood1 - pwx * hw1, ry1 * tWood1 - pwy * hw1);
-        ctx.lineTo(rx1 * tWood1 + pwx * hw1, ry1 * tWood1 + pwy * hw1);
+        ctx.moveTo(wvx * tWood0 + wpx * hw0, wvy * tWood0 + wpy * hw0);
+        ctx.lineTo(wvx * tWood0 - wpx * hw0, wvy * tWood0 - wpy * hw0);
+        ctx.lineTo(wvx * tWood1 - wpx * hw1, wvy * tWood1 - wpy * hw1);
+        ctx.lineTo(wvx * tWood1 + wpx * hw1, wvy * tWood1 + wpy * hw1);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = "#141418";
         ctx.beginPath();
-        ctx.moveTo(rx1, ry1);
-        ctx.lineTo(rx1 * tWood1 - pwx * hw1, ry1 * tWood1 - pwy * hw1);
-        ctx.lineTo(rx1 * tWood1 + pwx * hw1, ry1 * tWood1 + pwy * hw1);
+        ctx.moveTo(wvx, wvy);
+        ctx.lineTo(wvx * tWood1 - wpx * hw1, wvy * tWood1 - wpy * hw1);
+        ctx.lineTo(wvx * tWood1 + wpx * hw1, wvy * tWood1 + wpy * hw1);
         ctx.closePath();
         ctx.fill();
         ctx.fillStyle = "#2a2c32";
         ctx.beginPath();
-        ctx.moveTo(rx1, ry1);
-        ctx.lineTo(rx1 - uwx * 5.5 - pwx * 0.55, ry1 - uwy * 5.5 - pwy * 0.55);
-        ctx.lineTo(rx1 - uwx * 5.5 + pwx * 0.55, ry1 - uwy * 5.5 + pwy * 0.55);
+        ctx.moveTo(wvx, wvy);
+        ctx.lineTo(wvx - wux * 5.5 - wpx * 0.55, wvy - wuy * 5.5 - wpy * 0.55);
+        ctx.lineTo(wvx - wux * 5.5 + wpx * 0.55, wvy - wuy * 5.5 + wpy * 0.55);
         ctx.closePath();
         ctx.fill();
 
         const steelEnd = 0.88;
-        const sex = lx1 * steelEnd;
-        const sey = ly1 * steelEnd;
+        const sex = svx * steelEnd;
+        const sey = svy * steelEnd;
         ctx.lineWidth = 5;
         ctx.strokeStyle = "#7a8088";
         ctx.beginPath();
@@ -2049,7 +2168,7 @@
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.lineTo(lx1 * 0.86, ly1 * 0.86);
+        ctx.lineTo(svx * 0.86, svy * 0.86);
         ctx.stroke();
 
         const tn0 = 0.9;
@@ -2060,31 +2179,31 @@
         ctx.strokeStyle = "#3a3d45";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(lx1 * tn0 + pmx * nhw0, ly1 * tn0 + pmy * nhw0);
-        ctx.lineTo(lx1 * tn0 - pmx * nhw0, ly1 * tn0 - pmy * nhw0);
-        ctx.lineTo(lx1 * tn1 - pmx * nhw1, ly1 * tn1 - pmy * nhw1);
-        ctx.lineTo(lx1 * tn1 + pmx * nhw1, ly1 * tn1 + pmy * nhw1);
+        ctx.moveTo(svx * tn0 + spx * nhw0, svy * tn0 + spy * nhw0);
+        ctx.lineTo(svx * tn0 - spx * nhw0, svy * tn0 - spy * nhw0);
+        ctx.lineTo(svx * tn1 - spx * nhw1, svy * tn1 - spy * nhw1);
+        ctx.lineTo(svx * tn1 + spx * nhw1, svy * tn1 + spy * nhw1);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = "#2c2e34";
         ctx.beginPath();
-        ctx.moveTo(lx1, ly1);
-        ctx.lineTo(lx1 * tn1 - pmx * nhw1, ly1 * tn1 - pmy * nhw1);
-        ctx.lineTo(lx1 * tn1 + pmx * nhw1, ly1 * tn1 + pmy * nhw1);
+        ctx.moveTo(svx, svy);
+        ctx.lineTo(svx * tn1 - spx * nhw1, svy * tn1 - spy * nhw1);
+        ctx.lineTo(svx * tn1 + spx * nhw1, svy * tn1 + spy * nhw1);
         ctx.closePath();
         ctx.fill();
         ctx.strokeStyle = "#c8ccd4";
         ctx.lineWidth = 0.9;
         ctx.beginPath();
-        ctx.moveTo(lx1 * 0.9 + pmx * 1.1, ly1 * 0.9 + pmy * 1.1);
-        ctx.lineTo(lx1 * tn1 * 0.98 + pmx * 0.25, ly1 * tn1 * 0.98 + pmy * 0.25);
+        ctx.moveTo(svx * 0.9 + spx * 1.1, svy * 0.9 + spy * 1.1);
+        ctx.lineTo(svx * tn1 * 0.98 + spx * 0.25, svy * tn1 * 0.98 + spy * 0.25);
         ctx.stroke();
         ctx.fillStyle = "#0e0e12";
         ctx.beginPath();
-        ctx.moveTo(lx1, ly1);
-        ctx.lineTo(lx1 - umx * 4.2 - pmx * 0.28, ly1 - umy * 4.2 - pmy * 0.28);
-        ctx.lineTo(lx1 - umx * 4.2 + pmx * 0.28, ly1 - umy * 4.2 + pmy * 0.28);
+        ctx.moveTo(svx, svy);
+        ctx.lineTo(svx - sux * 4.2 - spx * 0.28, svy - suy * 4.2 - spy * 0.28);
+        ctx.lineTo(svx - sux * 4.2 + spx * 0.28, svy - suy * 4.2 + spy * 0.28);
         ctx.closePath();
         ctx.fill();
 
@@ -2193,6 +2312,17 @@
         return null;
       }
 
+      /** 参考线上的基准标记：自 y=gy 仅向上的短竖线（不向下方伸出） */
+      function drawGuideRefTickUp(ctx, x, gy) {
+        ctx.strokeStyle = "#285080";
+        ctx.lineWidth = 2.25;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x, gy);
+        ctx.lineTo(x, gy - GUIDE_REF_TICK_LEN_PX);
+        ctx.stroke();
+      }
+
       function redraw() {
         applyCompassPoseFromSweepAnim();
         const ctx = canvas.getContext("2d");
@@ -2217,7 +2347,6 @@
 
         if (bottomGuideLineShown) {
           const gy = bottomGuideLineY();
-          const refLeftX = guideLineRefPointX();
           ctx.save();
           ctx.strokeStyle = "#3d5a8a";
           ctx.lineWidth = 2.5;
@@ -2225,13 +2354,9 @@
           ctx.moveTo(10, gy);
           ctx.lineTo(cssW - 10, gy);
           ctx.stroke();
-          ctx.fillStyle = "#285080";
-          ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(refLeftX, gy, 5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+          for (let di = 0; di < guideLineRefDots.length; di++) {
+            drawGuideRefTickUp(ctx, guideLineRefDots[di].x, gy);
+          }
           ctx.restore();
         }
 
@@ -2264,20 +2389,22 @@
 
         if (bottomGuideLineShown && guideLineMarks.length > 0) {
           const gy = bottomGuideLineY();
-          const refX = guideLineRefPointX();
           ctx.save();
           for (let mi = 0; mi < guideLineMarks.length; mi++) {
             const m = guideLineMarks[mi];
             const x = guideMarkFootX(m);
-            const onRef = Math.abs(x - refX) <= GUIDE_REF_MARK_COINCIDE;
+            let onRef = false;
+            for (let ri = 0; ri < guideLineRefDots.length; ri++) {
+              if (
+                Math.abs(x - guideLineRefDots[ri].x) <=
+                GUIDE_REF_MARK_COINCIDE
+              ) {
+                onRef = true;
+                break;
+              }
+            }
             if (onRef) {
-              ctx.fillStyle = "#285080";
-              ctx.strokeStyle = "#ffffff";
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.arc(x, gy, 5, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.stroke();
+              drawGuideRefTickUp(ctx, x, gy);
             } else {
               const px = m.pivotX;
               const py = m.pivotY;
@@ -2308,7 +2435,7 @@
 
         if (
           bottomGuideLineShown &&
-          guideLineMarks.length >= 4
+          guideLineMarks.length >= 2
         ) {
           const gyMap = bottomGuideLineY();
           for (let ti = 0; ti < shapes.length; ti++) {
@@ -2459,6 +2586,15 @@
             return;
           }
         }
+        if (
+          bottomGuideLineShown &&
+          !drawRedLineMode &&
+          hitTest(px, py) == null &&
+          hitBottomGuideLineBand(px, py)
+        ) {
+          canvas.style.cursor = "pointer";
+          return;
+        }
         canvas.style.cursor = hitTest(px, py) != null ? "grab" : "default";
       }
 
@@ -2501,6 +2637,29 @@
           if (paletteCompassEl) {
             paletteCompassEl.classList.remove("active");
           }
+        }
+        if (
+          bottomGuideLineShown &&
+          !drawRedLineMode &&
+          id == null &&
+          !placeCompassMode &&
+          hitBottomGuideLineBand(p.x, p.y)
+        ) {
+          const gl = 10;
+          const gr = cssW - 10;
+          const x = Math.max(gl, Math.min(gr, p.x));
+          let dup = false;
+          for (let di = 0; di < guideLineRefDots.length; di++) {
+            if (Math.abs(guideLineRefDots[di].x - x) < 8) {
+              dup = true;
+              break;
+            }
+          }
+          if (!dup) {
+            guideLineRefDots.push({ x: x });
+          }
+          redraw();
+          return;
         }
         if (id == null) return;
         const s = shapes.find(function (sh) {
@@ -2869,6 +3028,7 @@
         redLineStroke = null;
         bottomGuideLineShown = false;
         guideLineMarks.length = 0;
+        guideLineRefDots.length = 0;
         if (guideSweepAnim != null && guideSweepAnim.raf) {
           cancelAnimationFrame(guideSweepAnim.raf);
         }
