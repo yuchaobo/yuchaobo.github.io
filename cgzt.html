@@ -183,9 +183,14 @@
       const TRI_K = 60;
       const TRI_LEG_LEFT = 3 * TRI_K;
       const TRI_LEG_TOP = 4 * TRI_K;
-      /** 叶形在 0–100 归一化坐标内绘制，外接约 86×89；等比缩放后装入此框（画布上为预览控件的 2.5 倍） */
-      const LEAF_W = 200;
-      const LEAF_H = 207.5;
+      /** 叶形在 0–100 归一化坐标内绘制；外接框按比例放大，使 leafOutlineVertsLocal 折线周长≈13cm（与直尺 TRI_K 一致） */
+      const LEAF_PERIM_TARGET_CM = 13;
+      /** 与 leafOutlineVertsLocal 相同采样下，外接 200×207.5 时的折线周长（px） */
+      const LEAF_REF_OUTLINE_PERIM_PX = 598.7611050070632;
+      const LEAF_DIM_SCALE =
+        (LEAF_PERIM_TARGET_CM * TRI_K) / LEAF_REF_OUTLINE_PERIM_PX;
+      const LEAF_W = 200 * LEAF_DIM_SCALE;
+      const LEAF_H = 207.5 * LEAF_DIM_SCALE;
       const LABEL_W = 56;
       const LABEL_H = 64;
 
@@ -213,6 +218,8 @@
 
       const COMPASS_LEG_LEN = 218;
       const COMPASS_HINGE_R = 16;
+      /** 铰链 y 下限（可为负），圆规可从画布上边缘移出 */
+      const COMPASS_Y_MIN = -(COMPASS_LEG_LEN + COMPASS_HINGE_R + 36);
       const COMPASS_LEG_HIT_R = 20;
       const COMPASS_PIVOT_HIT_R = 22;
       const COMPASS_MIN_SPREAD = 0.12;
@@ -273,6 +280,10 @@
       /** @type {{ points: { x: number; y: number }[]; pointerId: number } | null} */
       let redLineStroke = null;
       let bottomGuideLineShown = false;
+      /** 直尺贴近过底部参考线后，居中「12cm」保持显示（移开直尺仍保留） */
+      let guideLine12cmLabelPersisted = false;
+      /** 叶形周长红线化直后，直尺贴近该线段时在叶形下显示「13cm」，贴近过一次则保留 */
+      const persistedLeaf13cmLabelIds = new Set();
       /** 吸附到辅助线的标记：x 为脚上一点的参考线 x；pivot 为该次吸附时左脚尖（左腿）世界坐标，作圆弧圆心 */
       /** @type {{ x: number; pivotX: number; pivotY: number }[]} */
       let guideLineMarks = [];
@@ -432,6 +443,40 @@
           if (rulerCloseToBottomGuideLine(shapes[i])) return true;
         }
         return false;
+      }
+
+      /** 直尺贴近水平线段（叶形下化直红线）：x 与线段重叠、尺近似水平、竖直距离在容差内 */
+      function rulerCloseToHorizontalSegment(s, p0, p1, padX) {
+        const px = padX != null ? padX : 8;
+        if (Math.abs(p0.y - p1.y) > 2.5) return false;
+        const yLine = (p0.y + p1.y) * 0.5;
+        const xL = Math.min(p0.x, p1.x);
+        const xR = Math.max(p0.x, p1.x);
+        const b = rulerAabb(s);
+        if (b.maxX < xL - px || b.minX > xR + px) return false;
+        const ang = s.angle || 0;
+        if (Math.abs(Math.sin(ang)) > 0.35) return false;
+        return verticalDistRulerAabbToLine(b, yLine) <= RULER_EDGE_SNAP_DIST;
+      }
+
+      /** 若任一直尺贴近「由叶形化直」的周长红线段，则记下对应叶形 id，用于持续显示 13cm */
+      function updatePersistedLeaf13cmLabelFromRuler() {
+        for (let i = 0; i < shapes.length; i++) {
+          const rl = shapes[i];
+          if (rl.type !== "redline" || rl.straightenedFromLeafId == null) {
+            continue;
+          }
+          const pts = rl.points;
+          if (!pts || pts.length !== 2) continue;
+          for (let j = 0; j < shapes.length; j++) {
+            const ru = shapes[j];
+            if (ru.type !== "ruler") continue;
+            if (rulerCloseToHorizontalSegment(ru, pts[0], pts[1], 8)) {
+              persistedLeaf13cmLabelIds.add(rl.straightenedFromLeafId);
+              break;
+            }
+          }
+        }
       }
 
       function rulerWorldToLocalRotated(s, px, py) {
@@ -1326,6 +1371,11 @@
           { x: midX + half, y: y },
         ];
         delete rl.snappedToId;
+        if (target.type === "leaf") {
+          rl.straightenedFromLeafId = target.id;
+        } else {
+          delete rl.straightenedFromLeafId;
+        }
       }
 
       function drawRedLineShape(ctx, rl) {
@@ -1456,7 +1506,7 @@
         }
         if (best) {
           cmp.x = Math.max(mar, Math.min(cssW - mar, best.cx));
-          cmp.y = Math.max(mar, Math.min(cssH - mar, best.cy));
+          cmp.y = Math.max(COMPASS_Y_MIN, Math.min(cssH - mar, best.cy));
           cmp.angle = best.ang;
           cmp.spread = best.spread;
           return true;
@@ -1956,7 +2006,7 @@
           };
           const h = compassHingeFromLeftTipWorld(anchorX, gy, ang, sp, L);
           const cx = Math.max(mar, Math.min(cssW - mar, h.cx));
-          const cy = Math.max(mar, Math.min(cssH - mar, h.cy));
+          const cy = Math.max(COMPASS_Y_MIN, Math.min(cssH - mar, h.cy));
           cmp.x = cx;
           cmp.y = cy;
           cmp.angle = ang;
@@ -2021,7 +2071,7 @@
         const cosA = Math.cos(ang);
         const cy0 = gy - L * Math.cos(sp) * cosA;
         cmp.x = Math.max(mar, Math.min(cssW - mar, cmp.x));
-        cmp.y = Math.max(mar, Math.min(cssH - mar, cy0));
+        cmp.y = Math.max(COMPASS_Y_MIN, Math.min(cssH - mar, cy0));
         cmp.angle = ang;
         cmp.spread = sp;
         const tips2 = compassTipsWorld(cmp);
@@ -2450,22 +2500,28 @@
           }
         }
 
-        if (anyRulerCloseToBottomGuideLine()) {
+        if (bottomGuideLineShown && anyRulerCloseToBottomGuideLine()) {
+          guideLine12cmLabelPersisted = true;
+        }
+        if (bottomGuideLineShown && guideLine12cmLabelPersisted) {
           const gy = bottomGuideLineY();
           const cx = cssW / 2;
           ctx.save();
           ctx.font = "600 16px system-ui, sans-serif";
           ctx.textAlign = "center";
-          ctx.textBaseline = "bottom";
+          ctx.textBaseline = "top";
           ctx.strokeStyle = "rgba(255,255,255,0.92)";
           ctx.fillStyle = "#1a4d72";
           ctx.lineWidth = 3;
           ctx.lineJoin = "round";
           const t12 = "12cm";
-          ctx.strokeText(t12, cx, gy - 6);
-          ctx.fillText(t12, cx, gy - 6);
+          const labelY = gy + 6;
+          ctx.strokeText(t12, cx, labelY);
+          ctx.fillText(t12, cx, labelY);
           ctx.restore();
         }
+
+        updatePersistedLeaf13cmLabelFromRuler();
 
         tryAddRulerTriangleAlignmentHints();
         prunePersistedEdgeHints();
@@ -2474,6 +2530,34 @@
           drawLengthHints(ctx, lengthHints);
         }
         drawTrianglePerimeterFormulas(ctx);
+
+        const staleLeafIds = [];
+        persistedLeaf13cmLabelIds.forEach(function (lid) {
+          const lf = shapes.find(function (sh) {
+            return sh.id === lid && sh.type === "leaf";
+          });
+          if (!lf) {
+            staleLeafIds.push(lid);
+            return;
+          }
+          const cx = lf.x + LEAF_W / 2;
+          const by = lf.y + LEAF_H + 20;
+          ctx.save();
+          ctx.font = "600 16px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          ctx.strokeStyle = "rgba(255,255,255,0.92)";
+          ctx.fillStyle = "#3d2a18";
+          ctx.lineWidth = 3;
+          ctx.lineJoin = "round";
+          const t13 = "13cm";
+          ctx.strokeText(t13, cx, by);
+          ctx.fillText(t13, cx, by);
+          ctx.restore();
+        });
+        for (let si = 0; si < staleLeafIds.length; si++) {
+          persistedLeaf13cmLabelIds.delete(staleLeafIds[si]);
+        }
       }
 
       function resize() {
@@ -2760,7 +2844,7 @@
             let ny = p.y - dragOffsetY;
             const margin = COMPASS_LEG_LEN + COMPASS_HINGE_R;
             nx = Math.max(margin * 0.15, Math.min(cssW - margin * 0.15, nx));
-            ny = Math.max(margin * 0.15, Math.min(cssH - margin * 0.15, ny));
+            ny = Math.max(COMPASS_Y_MIN, Math.min(cssH - margin * 0.15, ny));
             s.x = nx;
             s.y = ny;
             redraw();
@@ -3027,6 +3111,8 @@
         drawRedLineMode = false;
         redLineStroke = null;
         bottomGuideLineShown = false;
+        guideLine12cmLabelPersisted = false;
+        persistedLeaf13cmLabelIds.clear();
         guideLineMarks.length = 0;
         guideLineRefDots.length = 0;
         if (guideSweepAnim != null && guideSweepAnim.raf) {
