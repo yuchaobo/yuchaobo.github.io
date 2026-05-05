@@ -225,6 +225,12 @@
       /** 直尺刻度边与三角形边：平行阈值与最大间距（像素） */
       const RULER_EDGE_SNAP_DIST = 14;
       const RULER_EDGE_PARALLEL_COS = Math.cos((12 * Math.PI) / 180);
+      /** 刻度带在尺面局部坐标中的 y（与 0 刻度对齐，贴边吸附用） */
+      const RULER_SCALE_LINE_Y = 14;
+      /** 拖动直尺松手时，指针靠近三角形 / 叶形边的吸附距离（像素） */
+      const RULER_TRI_SNAP_DIST = 26;
+      /** 吸附后刻度带与图形边之间的空隙（像素） */
+      const RULER_TRI_EDGE_GAP = 16;
 
       const COMPASS_LEG_LEN = 218;
       const COMPASS_HINGE_R = 16;
@@ -244,6 +250,8 @@
       /** 腿尖到三角形边的距离小于此值且铰链接近解时，松手吸附到该边两端 */
       const COMPASS_EDGE_SNAP_TIP = 34;
       const COMPASS_EDGE_SNAP_HINGE_MAX = 68;
+      /** 拖动圆规枢轴松手时，指针靠近轮廓边的吸附距离（像素） */
+      const COMPASS_POLY_EDGE_POINTER_SNAP = 28;
 
       /** 吸附参考线扫弧动画时长（圆规绕左脚尖转动右脚画弧） */
       const SWEEP_ANIM_DURATION_MS = 920;
@@ -255,6 +263,8 @@
       const REDLINE_SAMPLE_STEP = 3;
       /** 点击贴合红线：与折线的最大距离（像素） */
       const REDLINE_HIT_DIST = 12;
+      /** 画红线时指针与叶形轮廓距离小于此值则吸附到轮廓上（边画边贴） */
+      const REDLINE_LEAF_LIVE_SNAP_DIST = 50;
       /** 化直后放在图形底边下方的间距 */
       const REDLINE_BELOW_GAP = 10;
 
@@ -292,7 +302,7 @@
       let bottomGuideLineShown = false;
       /** 直尺贴近过底部参考线后，居中「12cm」保持显示（移开直尺仍保留） */
       let guideLine12cmLabelPersisted = false;
-      /** 叶形周长红线化直后，直尺贴近该线段时在叶形下显示「13cm」，贴近过一次则保留 */
+      /** 叶形周长红线化直后：拖动直尺松手时若贴近该红线段则记下叶 id，叶形下持续显示「13厘米」 */
       const persistedLeaf13cmLabelIds = new Set();
       /** 吸附到辅助线的标记：x 为脚上一点的参考线 x；pivot 为该次吸附时左脚尖（左腿）世界坐标，作圆弧圆心 */
       /** @type {{ x: number; pivotX: number; pivotY: number }[]} */
@@ -446,15 +456,6 @@
         return verticalDistRulerAabbToLine(b, gy) <= RULER_EDGE_SNAP_DIST;
       }
 
-      function anyRulerCloseToBottomGuideLine() {
-        if (!bottomGuideLineShown) return false;
-        for (let i = 0; i < shapes.length; i++) {
-          if (shapes[i].type !== "ruler") continue;
-          if (rulerCloseToBottomGuideLine(shapes[i])) return true;
-        }
-        return false;
-      }
-
       /** 直尺贴近水平线段（叶形下化直红线）：x 与线段重叠、尺近似水平、竖直距离在容差内 */
       function rulerCloseToHorizontalSegment(s, p0, p1, padX) {
         const px = padX != null ? padX : 8;
@@ -467,26 +468,6 @@
         const ang = s.angle || 0;
         if (Math.abs(Math.sin(ang)) > 0.35) return false;
         return verticalDistRulerAabbToLine(b, yLine) <= RULER_EDGE_SNAP_DIST;
-      }
-
-      /** 若任一直尺贴近「由叶形化直」的周长红线段，则记下对应叶形 id，用于持续显示 13cm */
-      function updatePersistedLeaf13cmLabelFromRuler() {
-        for (let i = 0; i < shapes.length; i++) {
-          const rl = shapes[i];
-          if (rl.type !== "redline" || rl.straightenedFromLeafId == null) {
-            continue;
-          }
-          const pts = rl.points;
-          if (!pts || pts.length !== 2) continue;
-          for (let j = 0; j < shapes.length; j++) {
-            const ru = shapes[j];
-            if (ru.type !== "ruler") continue;
-            if (rulerCloseToHorizontalSegment(ru, pts[0], pts[1], 8)) {
-              persistedLeaf13cmLabelIds.add(rl.straightenedFromLeafId);
-              break;
-            }
-          }
-        }
       }
 
       function rulerWorldToLocalRotated(s, px, py) {
@@ -559,6 +540,20 @@
         return Math.hypot(px - qx, py - qy);
       }
 
+      /** 线段采样点是否落在直尺矩形内（用于贴边后判断是否盖住边线） */
+      function segmentCoveredByRuler(ruler, ax, ay, bx, by) {
+        const steps = 12;
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const px = ax + (bx - ax) * t;
+          const py = ay + (by - ay) * t;
+          if (rulerHit(ruler, px, py)) {
+            return true;
+          }
+        }
+        return false;
+      }
+
       function segSegMinApprox(ax, ay, bx, by, cx, cy, dx, dy) {
         return Math.min(
           distPointSeg(ax, ay, cx, cy, dx, dy),
@@ -599,6 +594,166 @@
         ];
       }
 
+      /**
+       * 尺应摆在边的哪一侧：边中点附近 probe + containsFn 判定内外；并列时用形心参考点。
+       */
+      function rulerPolyOutwardNormal(
+        ax,
+        ay,
+        bx,
+        by,
+        angle,
+        containsWorldFn,
+        gcX,
+        gcY
+      ) {
+        const mx = (ax + bx) * 0.5;
+        const my = (ay + by) * 0.5;
+        const sn = Math.sin(angle);
+        let nx = -sn;
+        let ny = Math.cos(angle);
+        const probe = 14;
+        const inPlus = containsWorldFn(mx + nx * probe, my + ny * probe);
+        const inMinus = containsWorldFn(mx - nx * probe, my - ny * probe);
+        if (inPlus !== inMinus) {
+          return inPlus ? { nx: -nx, ny: -ny } : { nx: nx, ny: ny };
+        }
+        const tcx = gcX - mx;
+        const tcy = gcY - my;
+        if (nx * tcx + ny * tcy > 0) {
+          return { nx: -nx, ny: -ny };
+        }
+        return { nx: nx, ny: ny };
+      }
+
+      function triangleContainsWorld(wx, wy, t) {
+        const lx = wx - t.x;
+        const ly = wy - t.y;
+        sctx.beginPath();
+        trianglePath(sctx, TRI_LEG_TOP, TRI_LEG_LEFT);
+        return sctx.isPointInPath(lx, ly);
+      }
+
+      function leafContainsWorld(wx, wy, leaf) {
+        const lx = wx - leaf.x;
+        const ly = wy - leaf.y;
+        sctx.beginPath();
+        leafPath(sctx, LEAF_W, LEAF_H);
+        return sctx.isPointInPath(lx, ly);
+      }
+
+      /**
+       * 松开直尺拖动后：指针靠近三角形或叶形边时自动旋转并对齐 0 刻度端；三角形边记入长度标注。
+       */
+      function trySnapRulerToNearestShapeEdge(ruler, px, py) {
+        const mxLoc = (RULER_W - RULER_SCALE_W) / 2;
+        const ly0 = RULER_SCALE_LINE_Y;
+        let best = null;
+        let bestD = 1e9;
+
+        for (let idx = 0; idx < shapes.length; idx++) {
+          const sh = shapes[idx];
+          if (sh.type === "triangle") {
+            const edges = triangleEdgesWorld(sh);
+            for (let ei = 0; ei < edges.length; ei++) {
+              const e = edges[ei];
+              const dist = distPointSeg(px, py, e.ax, e.ay, e.bx, e.by);
+              if (dist < bestD) {
+                bestD = dist;
+                best = { shape: sh, kind: "tri", ei: ei, e: e };
+              }
+            }
+          } else if (sh.type === "leaf") {
+            const verts = leafOutlineVertsWorld(sh);
+            if (!verts || verts.length < 3) continue;
+            for (let ei = 0; ei < verts.length; ei++) {
+              const a = verts[ei];
+              const b = verts[(ei + 1) % verts.length];
+              const dist = distPointSeg(px, py, a.x, a.y, b.x, b.y);
+              if (dist < bestD) {
+                bestD = dist;
+                best = {
+                  shape: sh,
+                  kind: "leaf",
+                  ei: ei,
+                  e: { ax: a.x, ay: a.y, bx: b.x, by: b.y },
+                };
+              }
+            }
+          }
+        }
+
+        if (best == null || bestD > RULER_TRI_SNAP_DIST) {
+          return false;
+        }
+
+        const e = best.e;
+        const Ax = e.ax;
+        const Ay = e.ay;
+        const Bx = e.bx;
+        const By = e.by;
+        const dA = Math.hypot(px - Ax, py - Ay);
+        const dB = Math.hypot(px - Bx, py - By);
+        const zeroAtA = dA <= dB;
+        const angle = zeroAtA
+          ? Math.atan2(By - Ay, Bx - Ax)
+          : Math.atan2(Ay - By, Ax - Bx);
+        const ZX = zeroAtA ? Ax : Bx;
+        const ZY = zeroAtA ? Ay : By;
+        const u0 = mxLoc - RULER_W / 2;
+        const v0 = ly0 - RULER_H / 2;
+        const c = Math.cos(angle);
+        const sn = Math.sin(angle);
+        ruler.angle = angle;
+        ruler.x = ZX - (u0 * c - v0 * sn);
+        ruler.y = ZY - (u0 * sn + v0 * c);
+
+        const targetShape = best.shape;
+        let outward;
+        if (best.kind === "tri") {
+          outward = rulerPolyOutwardNormal(
+            Ax,
+            Ay,
+            Bx,
+            By,
+            angle,
+            function (wx, wy) {
+              return triangleContainsWorld(wx, wy, targetShape);
+            },
+            targetShape.x + TRI_LEG_TOP / 3,
+            targetShape.y + TRI_LEG_LEFT / 3
+          );
+        } else {
+          outward = rulerPolyOutwardNormal(
+            Ax,
+            Ay,
+            Bx,
+            By,
+            angle,
+            function (wx, wy) {
+              return leafContainsWorld(wx, wy, targetShape);
+            },
+            targetShape.x + LEAF_W / 2,
+            targetShape.y + LEAF_H / 2
+          );
+        }
+
+        ruler.x += outward.nx * RULER_TRI_EDGE_GAP;
+        ruler.y += outward.ny * RULER_TRI_EDGE_GAP;
+
+        if (segmentCoveredByRuler(ruler, Ax, Ay, Bx, By)) {
+          ruler.x -= 2 * outward.nx * RULER_TRI_EDGE_GAP;
+          ruler.y -= 2 * outward.ny * RULER_TRI_EDGE_GAP;
+        }
+
+        if (best.kind === "tri") {
+          persistedEdgeHintKeys.add(
+            String(targetShape.id) + "-" + String(best.ei)
+          );
+        }
+        return true;
+      }
+
       function layoutHintForTriangleEdge(t, ei) {
         const edges = triangleEdgesWorld(t);
         const e = edges[ei];
@@ -620,7 +775,7 @@
           ox: mx + nx * 18,
           oy: my + ny * 18,
           ang: Math.atan2(ey, ex),
-          text: String(cm) + " cm",
+          text: String(cm) + "厘米",
         };
       }
 
@@ -882,7 +1037,7 @@
           ctx.fillStyle = "#3d2a18";
           ctx.lineWidth = 3;
           ctx.lineJoin = "round";
-          const text = "3+4+5=12(cm)";
+          const text = "3+4+5=12厘米";
           ctx.strokeText(text, cx, by);
           ctx.fillText(text, cx, by);
           ctx.restore();
@@ -1209,6 +1364,33 @@
         return { x: bestX, y: bestY, s: bestS, total: acc };
       }
 
+      /**
+       * 画红线时：指针在叶形轮廓附近则吸附到轮廓上（边画边贴；仅叶形，三角形仍松手后整圈贴合）。
+       * @returns {{ x: number, y: number }}
+       */
+      function snapRedLinePointToLeafOutlineIfClose(px, py) {
+        let bestD = 1e9;
+        let bestX = px;
+        let bestY = py;
+        for (let i = 0; i < shapes.length; i++) {
+          const sh = shapes[i];
+          if (sh.type !== "leaf") continue;
+          const verts = leafOutlineVertsWorld(sh);
+          if (!verts || verts.length < 3) continue;
+          const c = closestOnClosedPolyline(px, py, verts);
+          const d = Math.hypot(px - c.x, py - c.y);
+          if (d < bestD) {
+            bestD = d;
+            bestX = c.x;
+            bestY = c.y;
+          }
+        }
+        if (bestD <= REDLINE_LEAF_LIVE_SNAP_DIST) {
+          return { x: bestX, y: bestY };
+        }
+        return { x: px, y: py };
+      }
+
       function wrapTau(tau, total) {
         let t = tau % total;
         if (t < 0) t += total;
@@ -1456,57 +1638,63 @@
         return { cx, cy, ang, spread, err };
       }
 
-      function trySnapCompassToNearestTriangleEdge(cmp) {
+      /** 圆规贴边吸附：轮廓线段（世界坐标），非三角形 / 叶形返回 null */
+      function shapeEdgesWorldForCompassSnap(sh) {
+        if (sh.type === "triangle") {
+          return triangleEdgesWorld(sh);
+        }
+        if (sh.type === "leaf") {
+          const verts = leafOutlineVertsWorld(sh);
+          if (!verts || verts.length < 3) return null;
+          const edges = [];
+          for (let i = 0; i < verts.length; i++) {
+            const a = verts[i];
+            const b = verts[(i + 1) % verts.length];
+            edges.push({
+              ax: a.x,
+              ay: a.y,
+              bx: b.x,
+              by: b.y,
+            });
+          }
+          return edges;
+        }
+        return null;
+      }
+
+      /**
+       * 拖动圆规枢轴松手时：指针靠近三角形或叶形边则旋转并张开两脚尖落在边两端（与直尺贴边一致）。
+       */
+      function trySnapCompassToNearestShapeEdgeByPointer(cmp, px, py) {
         const L = COMPASS_LEG_LEN;
-        const tips = compassTipsWorld(cmp);
-        const tLx = tips.L.x;
-        const tLy = tips.L.y;
-        const tRx = tips.R.x;
-        const tRy = tips.R.y;
         const margin = COMPASS_LEG_LEN + COMPASS_HINGE_R;
         const mar = margin * 0.15;
         let best = null;
         let bestScore = 1e9;
 
-        for (let i = 0; i < shapes.length; i++) {
-          const tri = shapes[i];
-          if (tri.type !== "triangle") continue;
-          const V = triangleVertsWorld(tri);
-          const edgePairs = [
-            [0, 1],
-            [1, 2],
-            [2, 0],
-          ];
-          for (let e = 0; e < edgePairs.length; e++) {
-            const ia = edgePairs[e][0];
-            const ib = edgePairs[e][1];
+        for (let si = 0; si < shapes.length; si++) {
+          const sh = shapes[si];
+          const edges = shapeEdgesWorldForCompassSnap(sh);
+          if (!edges) {
+            continue;
+          }
+          for (let ei = 0; ei < edges.length; ei++) {
+            const e = edges[ei];
+            const dist = distPointSeg(px, py, e.ax, e.ay, e.bx, e.by);
+            if (dist > COMPASS_POLY_EDGE_POINTER_SNAP) {
+              continue;
+            }
+            const Va = { x: e.ax, y: e.ay };
+            const Vb = { x: e.bx, y: e.by };
             for (let swap = 0; swap < 2; swap++) {
-              const Va = swap ? V[ib] : V[ia];
-              const Vb = swap ? V[ia] : V[ib];
-              const cfg = compassSnapConfigForDirectedEdge(Va, Vb, L);
-              if (!cfg || cfg.err > 2.5) continue;
-              const dL = distPointSeg(
-                tLx,
-                tLy,
-                Va.x,
-                Va.y,
-                Vb.x,
-                Vb.y
-              );
-              const dR = distPointSeg(
-                tRx,
-                tRy,
-                Va.x,
-                Va.y,
-                Vb.x,
-                Vb.y
-              );
-              if (dL > COMPASS_EDGE_SNAP_TIP || dR > COMPASS_EDGE_SNAP_TIP) {
+              const A = swap ? Vb : Va;
+              const B = swap ? Va : Vb;
+              const cfg = compassSnapConfigForDirectedEdge(A, B, L);
+              if (!cfg || cfg.err > 2.5) {
                 continue;
               }
               const dh = Math.hypot(cmp.x - cfg.cx, cmp.y - cfg.cy);
-              if (dh > COMPASS_EDGE_SNAP_HINGE_MAX) continue;
-              const score = dh + 0.35 * (dL + dR);
+              const score = dist + 0.02 * dh;
               if (score < bestScore) {
                 bestScore = score;
                 best = cfg;
@@ -1519,9 +1707,60 @@
           cmp.y = Math.max(COMPASS_Y_MIN, Math.min(cssH - mar, best.cy));
           cmp.angle = best.ang;
           cmp.spread = best.spread;
+          cmp.edgeSnapStraightenPending = true;
           return true;
         }
         return false;
+      }
+
+      /** 两脚是否同时贴近同一轮廓线段（判断是否仍贴在边上） */
+      function compassTipsBothNearSameShapeEdge(cmp, maxDist) {
+        const tips = compassTipsWorld(cmp);
+        for (let si = 0; si < shapes.length; si++) {
+          const edges = shapeEdgesWorldForCompassSnap(shapes[si]);
+          if (!edges) {
+            continue;
+          }
+          for (let ei = 0; ei < edges.length; ei++) {
+            const e = edges[ei];
+            const dL = distPointSeg(
+              tips.L.x,
+              tips.L.y,
+              e.ax,
+              e.ay,
+              e.bx,
+              e.by
+            );
+            const dR = distPointSeg(
+              tips.R.x,
+              tips.R.y,
+              e.ax,
+              e.ay,
+              e.bx,
+              e.by
+            );
+            if (dL <= maxDist && dR <= maxDist) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      /**
+       * 贴边吸附后拖动圆规：两脚均不再贴近任一轮廓边时，保持张角并将朝向摆正（angle=0）。
+       */
+      function maybeStraightenCompassUprightIfLeftShapeEdge(cmp) {
+        if (!cmp.edgeSnapStraightenPending) {
+          return;
+        }
+        if (
+          compassTipsBothNearSameShapeEdge(cmp, COMPASS_POLY_EDGE_POINTER_SNAP)
+        ) {
+          return;
+        }
+        cmp.angle = 0;
+        cmp.edgeSnapStraightenPending = false;
       }
 
       function bottomGuideLineY() {
@@ -2510,9 +2749,6 @@
           }
         }
 
-        if (bottomGuideLineShown && anyRulerCloseToBottomGuideLine()) {
-          guideLine12cmLabelPersisted = true;
-        }
         if (bottomGuideLineShown && guideLine12cmLabelPersisted) {
           const gy = bottomGuideLineY();
           const cx = cssW / 2;
@@ -2524,14 +2760,12 @@
           ctx.fillStyle = "#1a4d72";
           ctx.lineWidth = 3;
           ctx.lineJoin = "round";
-          const t12 = "12cm";
+          const t12 = "12厘米";
           const labelY = gy + 6;
           ctx.strokeText(t12, cx, labelY);
           ctx.fillText(t12, cx, labelY);
           ctx.restore();
         }
-
-        updatePersistedLeaf13cmLabelFromRuler();
 
         tryAddRulerTriangleAlignmentHints();
         prunePersistedEdgeHints();
@@ -2560,7 +2794,7 @@
           ctx.fillStyle = "#3d2a18";
           ctx.lineWidth = 3;
           ctx.lineJoin = "round";
-          const t13 = "13cm";
+          const t13 = "13厘米";
           ctx.strokeText(t13, cx, by);
           ctx.fillText(t13, cx, by);
           ctx.restore();
@@ -2640,8 +2874,9 @@
         let id = hitTest(p.x, p.y);
         const paletteCompassEl = document.getElementById("paletteCompass");
         if (drawRedLineMode && redLineStroke == null && id == null) {
+          const q = snapRedLinePointToLeafOutlineIfClose(p.x, p.y);
           redLineStroke = {
-            points: [{ x: p.x, y: p.y }],
+            points: [{ x: q.x, y: q.y }],
             pointerId: e.pointerId,
           };
           canvas.setPointerCapture(e.pointerId);
@@ -2749,8 +2984,9 @@
         ) {
           const pts = redLineStroke.points;
           const last = pts[pts.length - 1];
-          if (Math.hypot(p.x - last.x, p.y - last.y) >= 2) {
-            pts.push({ x: p.x, y: p.y });
+          const q = snapRedLinePointToLeafOutlineIfClose(p.x, p.y);
+          if (Math.hypot(q.x - last.x, q.y - last.y) >= 2) {
+            pts.push({ x: q.x, y: q.y });
           }
           redraw();
           return;
@@ -2799,6 +3035,7 @@
             ny = Math.max(COMPASS_Y_MIN, Math.min(cssH - margin * 0.15, ny));
             s.x = nx;
             s.y = ny;
+            maybeStraightenCompassUprightIfLeftShapeEdge(s);
             redraw();
             return;
           }
@@ -2826,28 +3063,77 @@
           canvas.releasePointerCapture(e.pointerId);
         } catch (_) {}
         let needRedraw = false;
-        if (
+        const pEnd = cssPointFromEvent(e);
+        const rulerTapNoMove =
           s &&
           s.type === "ruler" &&
           rulerTap != null &&
-          !rulerTap.moved
-        ) {
-          cycleRulerAngle(s);
-          needRedraw = true;
-        }
-        if (
+          !rulerTap.moved;
+        const compassTapNoMove =
           s &&
           s.type === "compass" &&
           compassTap != null &&
           !compassTap.moved &&
-          compassLegDrag == null
+          compassLegDrag == null;
+        const compassBodyDragged =
+          s &&
+          s.type === "compass" &&
+          compassTap != null &&
+          compassTap.moved &&
+          compassLegDrag == null;
+
+        if (
+          s &&
+          s.type === "ruler" &&
+          rulerTap != null &&
+          rulerTap.moved &&
+          trySnapRulerToNearestShapeEdge(s, pEnd.x, pEnd.y)
         ) {
-          cycleCompassAngle(s);
           needRedraw = true;
         }
+        if (
+          s &&
+          s.type === "ruler" &&
+          rulerTap != null &&
+          rulerTap.moved &&
+          bottomGuideLineShown &&
+          rulerCloseToBottomGuideLine(s)
+        ) {
+          guideLine12cmLabelPersisted = true;
+          needRedraw = true;
+        }
+        if (
+          s &&
+          s.type === "ruler" &&
+          rulerTap != null &&
+          rulerTap.moved
+        ) {
+          for (let ri = 0; ri < shapes.length; ri++) {
+            const rl = shapes[ri];
+            if (rl.type !== "redline" || rl.straightenedFromLeafId == null) {
+              continue;
+            }
+            const pts = rl.points;
+            if (!pts || pts.length !== 2) continue;
+            if (rulerCloseToHorizontalSegment(s, pts[0], pts[1], 8)) {
+              persistedLeaf13cmLabelIds.add(rl.straightenedFromLeafId);
+              needRedraw = true;
+            }
+          }
+        }
+
         rulerTap = null;
         compassTap = null;
         compassLegDrag = null;
+
+        if (rulerTapNoMove) {
+          cycleRulerAngle(s);
+          needRedraw = true;
+        }
+        if (compassTapNoMove) {
+          cycleCompassAngle(s);
+          needRedraw = true;
+        }
         if (s && s.type === "compass") {
           const fromState = {
             x: s.x,
@@ -2857,6 +3143,7 @@
           };
           const tipsBeforeSnap = compassTipsWorld(s);
           if (trySnapCompassToBottomGuide(s)) {
+            s.edgeSnapStraightenPending = false;
             const toState = {
               x: s.x,
               y: s.y,
@@ -2876,15 +3163,17 @@
               toState
             );
             needRedraw = true;
-          } else if (trySnapCompassToNearestTriangleEdge(s)) {
+          } else if (
+            compassBodyDragged &&
+            trySnapCompassToNearestShapeEdgeByPointer(s, pEnd.x, pEnd.y)
+          ) {
             needRedraw = true;
           }
         }
         if (needRedraw) {
           redraw();
         }
-        const p = cssPointFromEvent(e);
-        setCanvasCursorFromHover(p.x, p.y);
+        setCanvasCursorFromHover(pEnd.x, pEnd.y);
       }
 
       function finalizeRedLineStroke(e) {
