@@ -88,7 +88,8 @@
       outline: 2px solid #c62828;
       outline-offset: 2px;
     }
-    .palette-item--clear {
+    .palette-item--clear,
+    .palette-item--undo {
       letter-spacing: 0.12em;
       -webkit-user-drag: none;
     }
@@ -147,37 +148,26 @@
       >红线</div>
       <div
         class="palette-item palette-item--label palette-item--click-add"
+        id="paletteLetters"
         role="button"
         tabindex="0"
-        data-shape="label"
-        data-letter="A"
-        title="点击在画布中央添加字母 A；可在画布上拖动"
-        aria-label="字母 A"
-      >A</div>
+        title="点击批量标注：参考线圆规标记下方依次为 A、B、C、(A)…；三角形左下顶点左侧 A、右上右侧 B、左上左侧 C；可在画布上拖动字母"
+        aria-label="标字母"
+      >字母</div>
       <div
-        class="palette-item palette-item--label palette-item--click-add"
+        class="palette-item palette-item--label palette-item--undo"
+        id="paletteUndo"
         role="button"
         tabindex="0"
-        data-shape="label"
-        data-letter="B"
-        title="点击在画布中央添加字母 B；可在画布上拖动"
-        aria-label="字母 B"
-      >B</div>
-      <div
-        class="palette-item palette-item--label palette-item--click-add"
-        role="button"
-        tabindex="0"
-        data-shape="label"
-        data-letter="C"
-        title="点击在画布中央添加字母 C；可在画布上拖动"
-        aria-label="字母 C"
-      >C</div>
+        title="撤销上一步操作（最多保留约 50 步）"
+        aria-label="撤销"
+      >撤销</div>
       <div
         class="palette-item palette-item--label palette-item--clear"
         id="paletteClear"
         role="button"
         tabindex="0"
-        title="清空画布：移除三角形、叶形、直尺、圆规、红线、字母 A/B/C 及辅助线标记"
+        title="清空画布：移除三角形、叶形、直尺、圆规、红线、批量标注字母及辅助线标记"
         aria-label="清除"
       >清除</div>
     </div>
@@ -201,8 +191,13 @@
         (LEAF_PERIM_TARGET_CM * TRI_K) / LEAF_REF_OUTLINE_PERIM_PX;
       const LEAF_W = 200 * LEAF_DIM_SCALE;
       const LEAF_H = 207.5 * LEAF_DIM_SCALE;
-      const LABEL_W = 56;
-      const LABEL_H = 64;
+      const LABEL_W = 48;
+      const LABEL_H = 54;
+      /** 参考线圆规标记点下方字母周期：A → B → C → (A) → … */
+      const GUIDE_MARK_LETTER_CYCLE = ["A", "B", "C", "(A)"];
+      const TRI_VERTEX_LABEL_GAP = 12;
+      /** 标记点在参考线上的 y，字母框顶部下移（px） */
+      const GUIDE_MARK_LABEL_BELOW_GAP = 12;
 
       /** 画布上 1 cm 的像素长度，与三角形直角边 3k、4k、斜边 5k（k=60）一致，可用直尺读出 3、4、5 cm */
       const PX_PER_CM = TRI_K;
@@ -340,6 +335,87 @@
       let compassLegDrag = null;
       let lastHoverCss = { x: 0, y: 0 };
 
+      const UNDO_STACK_MAX = 50;
+      /** @type {object[]} */
+      const undoStack = [];
+      let undoMute = false;
+
+      function captureCanvasStateForUndo() {
+        return {
+          shapes: JSON.parse(JSON.stringify(shapes)),
+          nextId: nextId,
+          persistedEdgeHintKeys: Array.from(persistedEdgeHintKeys),
+          guideLine12cmLabelPersisted: guideLine12cmLabelPersisted,
+          persistedLeaf13cmLabelIds: Array.from(persistedLeaf13cmLabelIds),
+          guideLineMarks: JSON.parse(JSON.stringify(guideLineMarks)),
+          guideLineRefDots: JSON.parse(JSON.stringify(guideLineRefDots)),
+          bottomGuideLineShown: bottomGuideLineShown,
+          placeCompassMode: placeCompassMode,
+          drawRedLineMode: drawRedLineMode,
+        };
+      }
+
+      function recordUndoBeforeChange() {
+        if (undoMute) return;
+        undoStack.push(captureCanvasStateForUndo());
+        while (undoStack.length > UNDO_STACK_MAX) {
+          undoStack.shift();
+        }
+      }
+
+      function applyUndoSnapshot(snap) {
+        undoMute = true;
+        try {
+          const restored = JSON.parse(JSON.stringify(snap.shapes));
+          shapes.length = 0;
+          for (let i = 0; i < restored.length; i++) {
+            shapes.push(restored[i]);
+          }
+          nextId = snap.nextId;
+          persistedEdgeHintKeys.clear();
+          for (let hi = 0; hi < snap.persistedEdgeHintKeys.length; hi++) {
+            persistedEdgeHintKeys.add(snap.persistedEdgeHintKeys[hi]);
+          }
+          guideLine12cmLabelPersisted = snap.guideLine12cmLabelPersisted;
+          persistedLeaf13cmLabelIds.clear();
+          for (let li = 0; li < snap.persistedLeaf13cmLabelIds.length; li++) {
+            persistedLeaf13cmLabelIds.add(snap.persistedLeaf13cmLabelIds[li]);
+          }
+          guideLineMarks = JSON.parse(JSON.stringify(snap.guideLineMarks));
+          guideLineRefDots = JSON.parse(JSON.stringify(snap.guideLineRefDots));
+          bottomGuideLineShown = snap.bottomGuideLineShown;
+          placeCompassMode = snap.placeCompassMode;
+          drawRedLineMode = snap.drawRedLineMode;
+          dragShapeId = null;
+          dragOffsetX = 0;
+          dragOffsetY = 0;
+          rulerTap = null;
+          compassTap = null;
+          compassLegDrag = null;
+          redLineStroke = null;
+          if (guideSweepAnim != null && guideSweepAnim.raf) {
+            cancelAnimationFrame(guideSweepAnim.raf);
+          }
+          guideSweepAnim = null;
+          const ce = document.getElementById("paletteCompass");
+          if (ce) ce.classList.toggle("active", placeCompassMode);
+          const rle = document.getElementById("paletteRedLine");
+          if (rle) rle.classList.toggle("active", drawRedLineMode);
+          setCanvasCursorFromHover(lastHoverCss.x, lastHoverCss.y);
+          redraw();
+        } finally {
+          undoMute = false;
+        }
+      }
+
+      function undoLastChange() {
+        if (undoStack.length === 0) {
+          return;
+        }
+        const snap = undoStack.pop();
+        applyUndoSnapshot(snap);
+      }
+
       const scratch = document.createElement("canvas");
       const sctx = scratch.getContext("2d");
 
@@ -398,14 +474,25 @@
 
       function drawLabelStroke(ctx, s) {
         const letter = s.letter || "?";
+        const boxW = labelDisplayWidthForLetter(letter);
         ctx.save();
         ctx.translate(s.x, s.y);
-        ctx.font = "700 40px system-ui, sans-serif";
+        const fs =
+          letter.length <= 1
+            ? 32
+            : Math.max(18, Math.min(32, Math.floor(160 / letter.length)));
+        ctx.font = "700 " + fs + "px system-ui, sans-serif";
         ctx.fillStyle = STROKE;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(letter, LABEL_W / 2, LABEL_H / 2);
+        ctx.fillText(letter, boxW / 2, LABEL_H / 2);
         ctx.restore();
+      }
+
+      function labelDisplayWidthForLetter(letter) {
+        const L = letter != null ? String(letter) : "?";
+        if (L.length <= 1) return LABEL_W;
+        return Math.max(LABEL_W, Math.ceil(L.length * 14));
       }
 
       function rulerAabb(s) {
@@ -867,7 +954,7 @@
             ang += Math.PI;
           }
           ctx.rotate(ang);
-          ctx.font = "600 15px system-ui, sans-serif";
+          ctx.font = "600 18px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.strokeStyle = "rgba(255,255,255,0.95)";
@@ -1030,14 +1117,14 @@
           const cx = t.x + TRI_LEG_TOP / 2;
           const by = t.y + TRI_LEG_LEFT + 20;
           ctx.save();
-          ctx.font = "600 16px system-ui, sans-serif";
+          ctx.font = "600 24px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "top";
           ctx.strokeStyle = "rgba(255,255,255,0.92)";
           ctx.fillStyle = "#3d2a18";
-          ctx.lineWidth = 3;
+          ctx.lineWidth = 4;
           ctx.lineJoin = "round";
-          const text = "3+4+5=12厘米";
+          const text = "3+4+5=12（厘米）";
           ctx.strokeText(text, cx, by);
           ctx.fillText(text, cx, by);
           ctx.restore();
@@ -1305,10 +1392,11 @@
           return leafOutlineVertsWorld(s);
         }
         if (s.type === "label") {
+          const lw = labelDisplayWidthForLetter(s.letter);
           return [
             { x: s.x, y: s.y },
-            { x: s.x + LABEL_W, y: s.y },
-            { x: s.x + LABEL_W, y: s.y + LABEL_H },
+            { x: s.x + lw, y: s.y },
+            { x: s.x + lw, y: s.y + LABEL_H },
             { x: s.x, y: s.y + LABEL_H },
           ];
         }
@@ -1511,9 +1599,10 @@
           };
         }
         if (s.type === "label") {
+          const lw = labelDisplayWidthForLetter(s.letter);
           return {
             minX: s.x,
-            maxX: s.x + LABEL_W,
+            maxX: s.x + lw,
             minY: s.y,
             maxY: s.y + LABEL_H,
           };
@@ -2552,7 +2641,10 @@
           return { w: b.maxX - b.minX, h: b.maxY - b.minY };
         }
         if (shape.type === "label") {
-          return { w: LABEL_W, h: LABEL_H };
+          return {
+            w: labelDisplayWidthForLetter(shape.letter),
+            h: LABEL_H,
+          };
         }
         if (shape.type === "redline") {
           return { w: 0, h: 0 };
@@ -2611,6 +2703,66 @@
         return null;
       }
 
+      function syncBatchLetterLabelsFromAnchors() {
+        let sortedGuide = null;
+        let gy = null;
+        if (bottomGuideLineShown && guideLineMarks.length > 0) {
+          gy = bottomGuideLineY();
+          sortedGuide = guideLineMarks
+            .map(function (m) {
+              return { x: guideMarkFootX(m) };
+            })
+            .sort(function (a, b) {
+              return a.x - b.x;
+            });
+        }
+        for (let i = shapes.length - 1; i >= 0; i--) {
+          const s = shapes[i];
+          if (s.type !== "label" || !s.batchLetters || !s.anchor) continue;
+          if (dragShapeId === s.id) continue;
+          const a = s.anchor;
+          if (a.kind === "triVertex") {
+            const tri = shapes.find(function (sh) {
+              return sh.id === a.triId && sh.type === "triangle";
+            });
+            if (!tri) {
+              if (dragShapeId === s.id) dragShapeId = null;
+              shapes.splice(i, 1);
+              continue;
+            }
+            const V = triangleVertsWorld(tri);
+            const wlab = labelDisplayWidthForLetter(s.letter);
+            if (a.vertex === "BL") {
+              const V2 = V[2];
+              s.x = V2.x - TRI_VERTEX_LABEL_GAP - wlab;
+              s.y = V2.y - LABEL_H / 2;
+            } else if (a.vertex === "TR") {
+              const V1 = V[1];
+              s.x = V1.x + TRI_VERTEX_LABEL_GAP;
+              s.y = V1.y - LABEL_H / 2;
+            } else if (a.vertex === "TL") {
+              const V0 = V[0];
+              s.x = V0.x - TRI_VERTEX_LABEL_GAP - wlab;
+              s.y = V0.y - LABEL_H / 2;
+            }
+          } else if (a.kind === "guideMark") {
+            if (
+              !bottomGuideLineShown ||
+              !sortedGuide ||
+              a.markIndex >= sortedGuide.length
+            ) {
+              if (dragShapeId === s.id) dragShapeId = null;
+              shapes.splice(i, 1);
+              continue;
+            }
+            const cx = sortedGuide[a.markIndex].x;
+            const wlab = labelDisplayWidthForLetter(s.letter);
+            s.x = cx - wlab / 2;
+            s.y = gy + GUIDE_MARK_LABEL_BELOW_GAP;
+          }
+        }
+      }
+
       /** 参考线上的基准标记：自 y=gy 仅向上的短竖线（不向下方伸出） */
       function drawGuideRefTickUp(ctx, x, gy) {
         ctx.strokeStyle = "#285080";
@@ -2624,6 +2776,7 @@
 
       function redraw() {
         applyCompassPoseFromSweepAnim();
+        syncBatchLetterLabelsFromAnchors();
         const ctx = canvas.getContext("2d");
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.fillStyle = "#ffffff";
@@ -2753,7 +2906,7 @@
           const gy = bottomGuideLineY();
           const cx = cssW / 2;
           ctx.save();
-          ctx.font = "600 16px system-ui, sans-serif";
+          ctx.font = "600 19px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "top";
           ctx.strokeStyle = "rgba(255,255,255,0.92)";
@@ -2787,7 +2940,7 @@
           const cx = lf.x + LEAF_W / 2;
           const by = lf.y + LEAF_H + 20;
           ctx.save();
-          ctx.font = "600 16px system-ui, sans-serif";
+          ctx.font = "600 19px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "top";
           ctx.strokeStyle = "rgba(255,255,255,0.92)";
@@ -2886,6 +3039,7 @@
         }
         if (placeCompassMode) {
           if (id == null) {
+            recordUndoBeforeChange();
             shapes.push({
               id: nextId++,
               type: "compass",
@@ -2927,6 +3081,7 @@
             }
           }
           if (!dup) {
+            recordUndoBeforeChange();
             guideLineRefDots.push({ x: x });
           }
           redraw();
@@ -2942,6 +3097,7 @@
             return sh.id === s.snappedToId;
           });
           if (tgt) {
+            recordUndoBeforeChange();
             straightenRedlineBelowShape(s, tgt);
           } else {
             delete s.snappedToId;
@@ -2952,6 +3108,7 @@
         if (s.type === "redline") {
           return;
         }
+        recordUndoBeforeChange();
         dragShapeId = id;
         dragOffsetX = p.x - s.x;
         dragOffsetY = p.y - s.y;
@@ -3189,6 +3346,7 @@
         const pts = redLineStroke.points;
         redLineStroke = null;
         if (pts.length >= 2) {
+          recordUndoBeforeChange();
           const rl = { id: nextId++, type: "redline", points: pts.slice() };
           snapRedlineToNearestShape(rl);
           shapes.push(rl);
@@ -3220,30 +3378,91 @@
         let y = (ch - h) / 2;
         x = Math.max(0, Math.min(cw - w, x));
         y = Math.max(0, Math.min(ch - h, y));
+        recordUndoBeforeChange();
         shapes.push({ id: nextId++, type: kind, x: x, y: y });
         redraw();
       }
 
-      function addLabelFromPalette(letter) {
-        const w = LABEL_W;
-        const h = LABEL_H;
-        const cw = cssW > 0 ? cssW : wrap.clientWidth;
-        const ch = cssH > 0 ? cssH : wrap.clientHeight;
-        let x = (cw - w) / 2;
-        let y = (ch - h) / 2;
-        x = Math.max(0, Math.min(cw - w, x));
-        y = Math.max(0, Math.min(ch - h, y));
-        shapes.push({
-          id: nextId++,
-          type: "label",
-          letter: letter,
-          x: x,
-          y: y,
+      function removeBatchLetterLabels() {
+        for (let i = shapes.length - 1; i >= 0; i--) {
+          const sh = shapes[i];
+          if (sh.type === "label" && sh.batchLetters) {
+            if (dragShapeId === sh.id) dragShapeId = null;
+            shapes.splice(i, 1);
+          }
+        }
+      }
+
+      function applyBatchLetterLabels() {
+        recordUndoBeforeChange();
+        removeBatchLetterLabels();
+        const gyBase =
+          bottomGuideLineShown && guideLineMarks.length > 0
+            ? bottomGuideLineY()
+            : null;
+        if (gyBase != null && guideLineMarks.length > 0) {
+          const sorted = guideLineMarks
+            .map(function (m) {
+              return { x: guideMarkFootX(m) };
+            })
+            .sort(function (a, b) {
+              return a.x - b.x;
+            });
+          for (let gi = 0; gi < sorted.length; gi++) {
+            const letter =
+              GUIDE_MARK_LETTER_CYCLE[gi % GUIDE_MARK_LETTER_CYCLE.length];
+            const cx = sorted[gi].x;
+            const wlab = labelDisplayWidthForLetter(letter);
+            shapes.push({
+              id: nextId++,
+              type: "label",
+              letter: letter,
+              x: cx - wlab / 2,
+              y: gyBase + GUIDE_MARK_LABEL_BELOW_GAP,
+              batchLetters: true,
+              anchor: { kind: "guideMark", markIndex: gi },
+            });
+          }
+        }
+        const trianglesOnly = shapes.filter(function (sh) {
+          return sh.type === "triangle";
         });
+        for (let ti = 0; ti < trianglesOnly.length; ti++) {
+          const tid = trianglesOnly[ti].id;
+          shapes.push({
+            id: nextId++,
+            type: "label",
+            letter: "A",
+            x: 0,
+            y: 0,
+            batchLetters: true,
+            anchor: { kind: "triVertex", triId: tid, vertex: "BL" },
+          });
+          shapes.push({
+            id: nextId++,
+            type: "label",
+            letter: "B",
+            x: 0,
+            y: 0,
+            batchLetters: true,
+            anchor: { kind: "triVertex", triId: tid, vertex: "TR" },
+          });
+          shapes.push({
+            id: nextId++,
+            type: "label",
+            letter: "C",
+            x: 0,
+            y: 0,
+            batchLetters: true,
+            anchor: { kind: "triVertex", triId: tid, vertex: "TL" },
+          });
+        }
+        syncBatchLetterLabelsFromAnchors();
         redraw();
       }
 
       function toggleRulerFromPalette() {
+        recordUndoBeforeChange();
         let hasRuler = false;
         for (let i = 0; i < shapes.length; i++) {
           if (shapes[i].type === "ruler") {
@@ -3296,20 +3515,6 @@
           });
           return;
         }
-        if (kind === "label") {
-          const letter = el.getAttribute("data-letter") || "?";
-          el.addEventListener("click", function (e) {
-            e.preventDefault();
-            addLabelFromPalette(letter);
-          });
-          el.addEventListener("keydown", function (e) {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              addLabelFromPalette(letter);
-            }
-          });
-          return;
-        }
         const pc = document.createElement("canvas");
         pc.width = 72;
         pc.height = 72;
@@ -3333,6 +3538,24 @@
           }
         });
       });
+
+      (function initPaletteLetters() {
+        const el = document.getElementById("paletteLetters");
+        if (!el) return;
+        function applyLetters() {
+          applyBatchLetterLabels();
+        }
+        el.addEventListener("click", function (e) {
+          e.preventDefault();
+          applyLetters();
+        });
+        el.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            applyLetters();
+          }
+        });
+      })();
 
       (function initPaletteCompass() {
         const el = document.getElementById("paletteCompass");
@@ -3391,6 +3614,7 @@
       })();
 
       function clearCanvas() {
+        recordUndoBeforeChange();
         shapes.length = 0;
         nextId = 1;
         persistedEdgeHintKeys.clear();
@@ -3419,6 +3643,21 @@
         setCanvasCursorFromHover(lastHoverCss.x, lastHoverCss.y);
         redraw();
       }
+
+      (function initPaletteUndo() {
+        const el = document.getElementById("paletteUndo");
+        if (!el) return;
+        el.addEventListener("click", function (e) {
+          e.preventDefault();
+          undoLastChange();
+        });
+        el.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            undoLastChange();
+          }
+        });
+      })();
 
       (function initPaletteClear() {
         const el = document.getElementById("paletteClear");
