@@ -40,16 +40,59 @@
       height: 100%;
       touch-action: none;
     }
-    .controls {
+    .bottom-bar {
       flex-shrink: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      gap: 12px 16px;
+      min-height: 104px;
+      padding: 12px 12px 12px 16px;
+    }
+    .bottom-bar__gutter {
+      min-width: 0;
+      pointer-events: none;
+    }
+    .controls {
+      grid-column: 2;
+      justify-self: center;
       display: flex;
       flex-direction: row;
       flex-wrap: wrap;
       justify-content: center;
       align-items: center;
       gap: 24px;
-      min-height: 104px;
-      padding: 12px 0;
+    }
+    .page-attribution {
+      grid-column: 3;
+      justify-self: end;
+      align-self: center;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      font-size: 1.2rem;
+      color: #5a5045;
+      letter-spacing: 0.05em;
+      line-height: 1.45;
+      user-select: none;
+    }
+    @media (max-width: 720px) {
+      .bottom-bar {
+        grid-template-columns: 1fr;
+        justify-items: center;
+      }
+      .bottom-bar__gutter {
+        display: none;
+      }
+      .controls {
+        grid-column: 1;
+      }
+      .page-attribution {
+        grid-column: 1;
+        justify-self: center;
+        align-items: center;
+      }
     }
     .palette-item {
       display: inline-flex;
@@ -64,18 +107,8 @@
       user-select: none;
       -webkit-user-drag: element;
     }
-    .palette-item--shape-add {
-      cursor: pointer;
-      -webkit-user-drag: none;
-    }
-    .palette-item--shape-add:active {
-      cursor: pointer;
-    }
     .palette-item:active {
       cursor: grabbing;
-    }
-    .palette-item.palette-item--shape-add:active {
-      cursor: pointer;
     }
     .palette-item--label {
       font-size: 1.1rem;
@@ -96,6 +129,21 @@
       letter-spacing: 0.12em;
       -webkit-user-drag: none;
     }
+    .palette-item--undo {
+      letter-spacing: 0.08em;
+      -webkit-user-drag: none;
+    }
+    .palette-item[aria-disabled="true"] {
+      opacity: 0.42;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+    .palette-item--add-shapes {
+      width: 116px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      -webkit-user-drag: none;
+    }
   </style>
 </head>
 <body>
@@ -103,31 +151,17 @@
     <div class="canvas-wrap">
       <canvas id="mainCanvas" width="800" height="600"></canvas>
     </div>
-    <div class="controls" aria-label="控件区域">
+    <div class="bottom-bar">
+      <div class="bottom-bar__gutter" aria-hidden="true"></div>
+      <div class="controls" aria-label="控件区域">
       <div
-        class="palette-item palette-item--shape-add"
-        data-shape="dart"
+        class="palette-item palette-item--label palette-item--add-shapes"
+        id="paletteAddShapes"
         role="button"
         tabindex="0"
-        title="凹四边形①：左上1厘米、左下2厘米、右上3厘米、右下4厘米；整体略顺时针旋转；点击添加到画布中央；画布上可拖动"
-        aria-label="凹四边形①"
-      ></div>
-      <div
-        class="palette-item palette-item--shape-add"
-        data-shape="square"
-        role="button"
-        tabindex="0"
-        title="正方形②：边长 3厘米；点击添加到画布中央；画布上可拖动"
-        aria-label="正方形②"
-      ></div>
-      <div
-        class="palette-item palette-item--shape-add"
-        data-shape="parallelogram"
-        role="button"
-        tabindex="0"
-        title="平行四边形③：上下底各 4厘米，左右腰各 2厘米4毫米，底角 45°；点击添加到画布中央；画布上可拖动"
-        aria-label="平行四边形③"
-      ></div>
+        title="一次添加凹四边形、正方形、平行四边形：画布内横向左、中、右排列（间隙较大），竖向居中；下方编号依次为 ①、②、③（凹四边形边长 1～4 厘米；正方形边长 3 厘米；平行四边形上下底 4 厘米、腰 2 厘米 4 毫米）；可分别拖动"
+        aria-label="添加图形"
+      >添加图形</div>
       <div
         class="palette-item palette-item--label"
         data-shape="ruler"
@@ -141,7 +175,7 @@
         id="paletteCompass"
         role="button"
         tabindex="0"
-        title="第 1 次点此进入放置模式，再在画布空白处点击放置圆规；首次放置后出现一条水平参考线（为最上方①号线，几何位置在原三线布局中最上一道）；第 2、3 次点此：自上向下依次增加②、③号线（与①等距）；样式与原先相同：实线、两脚贴近可吸附、线上每条约一个基准短竖线（同线再点则移动）；链式吸附须在同一条线上；第 4 次起不再增加参考线；拖动铰链或腿身移动圆规，拖动腿尖张合；首次两脚靠近某条辅助线松手吸附并记下两点，之后须将左脚尖移到上一右脚标记附近再松手（仍在该线上），左脚落在该点、记下新右脚点（可继续得到第四、五点…）；拖动枢轴移动后，指针靠近凹四边形、正方形或平行四边形某边松手时，自动旋转并张开两脚对准该边两端"
+        title="画布上尚无圆规时：点此一次即在画布中央放置圆规（并显示最上①号参考线）；已有圆规时：第 1 次点此进入放置模式，再在画布空白处点击可再放一个圆规；第 2、3 次点此：自上向下依次增加②、③号线（与①等距）；第 4 次起不再增加参考线；实线、两脚贴近可吸附、线上每条约一个基准短竖线（同线再点则移动）；链式吸附须在同一条线上；拖动铰链或腿身移动圆规，拖动腿尖张合；首次两脚靠近某条辅助线松手吸附并记下两点，之后须将左脚尖移到上一右脚标记附近再松手（仍在该线上），左脚落在该点、记下新右脚点（可继续得到第四、五点…）；拖动枢轴移动后，指针靠近凹四边形、正方形或平行四边形某边松手时，自动旋转并张开两脚对准该边两端"
         aria-label="圆规"
       >圆规</div>
       <div
@@ -153,6 +187,15 @@
         aria-label="对齐参考线点"
       >对齐</div>
       <div
+        class="palette-item palette-item--label palette-item--undo"
+        id="paletteUndo"
+        role="button"
+        tabindex="0"
+        title="撤销上一步操作（添加或删除图形、拖动、圆规与参考线相关操作、对齐、清除等）"
+        aria-label="撤销"
+        aria-disabled="true"
+      >撤销</div>
+      <div
         class="palette-item palette-item--label palette-item--clear"
         id="paletteClear"
         role="button"
@@ -160,6 +203,11 @@
         title="清空画布：移除凹四边形、正方形、平行四边形、直尺、圆规及辅助线与边长标注"
         aria-label="清除"
       >清除</div>
+      </div>
+      <footer class="page-attribution" aria-label="署名">
+        <span>301班 小于AI老师</span>
+        <span>石实实验 原创AI设计</span>
+      </footer>
     </div>
   </div>
   <script>
@@ -380,6 +428,8 @@
       const COMPASS_HINGE_R = 16;
       /** 铰链 y 下限（可为负），圆规可从画布上边缘移出 */
       const COMPASS_Y_MIN = -(COMPASS_LEG_LEN + COMPASS_HINGE_R + 36);
+      /** 无圆规时点调色板自动放置：相对画布垂直中心再上移（像素） */
+      const COMPASS_PALETTE_PLACE_UP_OFFSET_PX = 56;
       const COMPASS_LEG_HIT_R = 20;
       const COMPASS_PIVOT_HIT_R = 22;
       const COMPASS_MIN_SPREAD = 0.12;
@@ -482,8 +532,181 @@
       let compassLegDrag = null;
       let lastHoverCss = { x: 0, y: 0 };
 
+      const UNDO_STACK_MAX = 50;
+      /** @type {object[]} */
+      let undoStack = [];
+      let undoRestoring = false;
+
       const scratch = document.createElement("canvas");
       const sctx = scratch.getContext("2d");
+
+      function cancelGuideSweepAnimation() {
+        if (guideSweepAnim != null && guideSweepAnim.raf) {
+          cancelAnimationFrame(guideSweepAnim.raf);
+        }
+        guideSweepAnim = null;
+      }
+
+      function serializeShapeForUndo(s) {
+        const o = {
+          id: s.id,
+          type: s.type,
+          x: s.x,
+          y: s.y,
+        };
+        if (s.angle !== undefined) {
+          o.angle = s.angle;
+        }
+        if (s.spread !== undefined) {
+          o.spread = s.spread;
+        }
+        if (s.edgeSnapStraightenPending !== undefined) {
+          o.edgeSnapStraightenPending = s.edgeSnapStraightenPending;
+        }
+        return o;
+      }
+
+      function deserializeShapeForUndo(data) {
+        const s = {
+          id: data.id,
+          type: data.type,
+          x: data.x,
+          y: data.y,
+        };
+        if (data.angle !== undefined) {
+          s.angle = data.angle;
+        }
+        if (data.spread !== undefined) {
+          s.spread = data.spread;
+        }
+        if (data.edgeSnapStraightenPending !== undefined) {
+          s.edgeSnapStraightenPending = data.edgeSnapStraightenPending;
+        }
+        return s;
+      }
+
+      function snapshotUndoState() {
+        const snapShapes = [];
+        for (let i = 0; i < shapes.length; i++) {
+          snapShapes.push(serializeShapeForUndo(shapes[i]));
+        }
+        const hints = [];
+        for (let hi = 0; hi < guideRulerSnapHints.length; hi++) {
+          const h = guideRulerSnapHints[hi];
+          hints.push({
+            text: h.text,
+            lineIdx: h.lineIdx,
+            gy: h.gy,
+          });
+        }
+        return {
+          shapes: snapShapes,
+          nextId: nextId,
+          persistedPolyEdgeHintKeys: Array.from(persistedPolyEdgeHintKeys),
+          guideRulerSnapHints: hints,
+          guideLineMarks: JSON.parse(JSON.stringify(guideLineMarks)),
+          guideLineRefDots: JSON.parse(JSON.stringify(guideLineRefDots)),
+          bottomGuideLineShown: bottomGuideLineShown,
+          compassPaletteButtonClicks: compassPaletteButtonClicks,
+          extraGuideLineOffsetsPx: extraGuideLineOffsetsPx.slice(),
+          guideAlignVerticalDashActive: guideAlignVerticalDashActive,
+          placeCompassMode: placeCompassMode,
+        };
+      }
+
+      function restoreUndoState(entry) {
+        undoRestoring = true;
+        try {
+          cancelGuideSweepAnimation();
+          shapes.length = 0;
+          for (let i = 0; i < entry.shapes.length; i++) {
+            shapes.push(deserializeShapeForUndo(entry.shapes[i]));
+          }
+          nextId = entry.nextId;
+          persistedPolyEdgeHintKeys.clear();
+          for (let ki = 0; ki < entry.persistedPolyEdgeHintKeys.length; ki++) {
+            persistedPolyEdgeHintKeys.add(entry.persistedPolyEdgeHintKeys[ki]);
+          }
+          guideRulerSnapHints.length = 0;
+          for (let hi = 0; hi < entry.guideRulerSnapHints.length; hi++) {
+            const h = entry.guideRulerSnapHints[hi];
+            guideRulerSnapHints.push({
+              text: h.text,
+              lineIdx: h.lineIdx,
+              gy: h.gy,
+            });
+          }
+          guideLineMarks.length = 0;
+          const marks = entry.guideLineMarks;
+          for (let mi = 0; mi < marks.length; mi++) {
+            guideLineMarks.push(marks[mi]);
+          }
+          guideLineRefDots.length = 0;
+          const dots = entry.guideLineRefDots;
+          for (let di = 0; di < dots.length; di++) {
+            guideLineRefDots.push(dots[di]);
+          }
+          bottomGuideLineShown = entry.bottomGuideLineShown;
+          compassPaletteButtonClicks = entry.compassPaletteButtonClicks;
+          extraGuideLineOffsetsPx.length = 0;
+          for (let ei = 0; ei < entry.extraGuideLineOffsetsPx.length; ei++) {
+            extraGuideLineOffsetsPx.push(entry.extraGuideLineOffsetsPx[ei]);
+          }
+          guideAlignVerticalDashActive = entry.guideAlignVerticalDashActive;
+          placeCompassMode = entry.placeCompassMode;
+          dragShapeId = null;
+          dragOffsetX = 0;
+          dragOffsetY = 0;
+          rulerTap = null;
+          compassTap = null;
+          compassLegDrag = null;
+          const ce = document.getElementById("paletteCompass");
+          if (ce) {
+            if (placeCompassMode) {
+              ce.classList.add("active");
+            } else {
+              ce.classList.remove("active");
+            }
+          }
+          setCanvasCursorFromHover(lastHoverCss.x, lastHoverCss.y);
+          redraw();
+        } finally {
+          undoRestoring = false;
+        }
+      }
+
+      function updatePaletteUndoButton() {
+        const el = document.getElementById("paletteUndo");
+        if (!el) {
+          return;
+        }
+        const empty = undoStack.length === 0;
+        if (empty) {
+          el.setAttribute("aria-disabled", "true");
+        } else {
+          el.removeAttribute("aria-disabled");
+        }
+      }
+
+      function pushUndoSnapshot() {
+        if (undoRestoring) {
+          return;
+        }
+        undoStack.push(snapshotUndoState());
+        while (undoStack.length > UNDO_STACK_MAX) {
+          undoStack.shift();
+        }
+        updatePaletteUndoButton();
+      }
+
+      function performUndo() {
+        if (undoStack.length === 0) {
+          return;
+        }
+        const entry = undoStack.pop();
+        restoreUndoState(entry);
+        updatePaletteUndoButton();
+      }
 
       /** @param geom 默认 DART；顶点顺序：左上→尖端→左下→凹点 */
       function dartPath(ctx, geom) {
@@ -777,6 +1000,11 @@
         return { nx: nx, ny: ny };
       }
 
+      /** 多边形边长「几厘米 / 几毫米」贴尺标注字号（px）；与 drawLengthHints、底部算式协调 */
+      const POLY_EDGE_LENGTH_HINT_FONT_PX = 20;
+      /** 边长标注沿法向偏离边的距离（px） */
+      const POLY_EDGE_LENGTH_HINT_OFFSET_PX = 22;
+
       function layoutHintForDartEdge(d, ei) {
         const edges = dartEdgesWorld(d);
         const e = edges[ei];
@@ -798,8 +1026,8 @@
         }
         const cmLen = Math.round(e.cmPx / PX_PER_CM);
         return {
-          ox: mx + nx * 18,
-          oy: my + ny * 18,
+          ox: mx + nx * POLY_EDGE_LENGTH_HINT_OFFSET_PX,
+          oy: my + ny * POLY_EDGE_LENGTH_HINT_OFFSET_PX,
           ang: Math.atan2(ey, ex),
           text: formatEdgeLengthLabelCm(cmLen),
         };
@@ -823,8 +1051,8 @@
         }
         const cmLen = Math.round(e.cmPx / PX_PER_CM);
         return {
-          ox: mx + nx * 18,
-          oy: my + ny * 18,
+          ox: mx + nx * POLY_EDGE_LENGTH_HINT_OFFSET_PX,
+          oy: my + ny * POLY_EDGE_LENGTH_HINT_OFFSET_PX,
           ang: Math.atan2(ey, ex),
           text: formatEdgeLengthLabelCm(cmLen),
         };
@@ -859,8 +1087,8 @@
             ? PARA_SIDE_LEN / PX_PER_CM
             : Math.round(e.cmPx / PX_PER_CM);
         return {
-          ox: mx + nx * 18,
-          oy: my + ny * 18,
+          ox: mx + nx * POLY_EDGE_LENGTH_HINT_OFFSET_PX,
+          oy: my + ny * POLY_EDGE_LENGTH_HINT_OFFSET_PX,
           ang: Math.atan2(ey, ex),
           text: formatEdgeLengthLabelCm(cmLen),
         };
@@ -1073,12 +1301,15 @@
             ang += Math.PI;
           }
           ctx.rotate(ang);
-          ctx.font = "600 16px system-ui, sans-serif";
+          ctx.font =
+            "600 " +
+            String(POLY_EDGE_LENGTH_HINT_FONT_PX) +
+            "px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.strokeStyle = "rgba(255,255,255,0.95)";
           ctx.fillStyle = "#1a4d72";
-          ctx.lineWidth = 4;
+          ctx.lineWidth = 5;
           ctx.lineJoin = "round";
           ctx.miterLimit = 2;
           ctx.strokeText(h.text, 0, 0);
@@ -2110,6 +2341,7 @@
         const gr = guideLineSegRightX();
         const segLen = gr - gl;
         if (segLen <= 1) return;
+        pushUndoSnapshot();
         guideAlignVerticalDashActive = true;
         const targetX = gl + segLen / 8;
 
@@ -2541,19 +2773,26 @@
         return { w: 0, h: 0 };
       }
 
-      /** 顺序标记 ①②③：多边形标在底边下方；参考线自上而下①②③标在左侧（至多三条线） */
-      const SHAPE_ORDER_LABELS = ["①", "②", "③"];
+      /** 参考线左侧与多边形底边下方共用顺序标记 ①②③ */
+      const GUIDE_LINE_ORDER_LABELS = ["①", "②", "③"];
+      const POLY_SHAPE_ORDER_LABELS = GUIDE_LINE_ORDER_LABELS;
+      /** 一次添加三种四边形时，图形之间的水平间隙（像素） */
+      const PALETTE_THREE_SHAPES_GAP_PX = 150;
+      /** 横排图形竖向基准相对画布垂直中线的上移量（略微抬高初始位置） */
+      const PALETTE_THREE_SHAPES_CENTER_UP_PX = 110;
       const SHAPE_ORDER_LABEL_GAP_BELOW_BBOX_PX = 12;
       /** 正方形贴边后底侧常有「3厘米」等标注，编号再下移以免重合 */
       const SHAPE_ORDER_LABEL_SQUARE_EXTRA_DOWN_PX = 30;
       /** 编号字形大致占位高度（textBaseline top），用于其下方汇总文案起点 */
-      const SHAPE_ORDER_GLYPH_BODY_PX = 20;
-      /** 四条边均有标尺标注时，编号下方的汇总说明字号 */
+      const SHAPE_ORDER_GLYPH_BODY_PX = 24;
+      /** 四条边均有标尺标注时，编号下方的汇总说明字号（与 POLY_EDGE_LENGTH_HINT_FONT_PX 一致放大） */
       const SHAPE_POLY_SUMMARY_FONT =
-        "600 16px system-ui, 'Segoe UI', sans-serif";
-      const SHAPE_POLY_SUMMARY_LINE_GAP_PX = 5;
+        "600 " +
+        String(POLY_EDGE_LENGTH_HINT_FONT_PX) +
+        "px system-ui, 'Segoe UI', sans-serif";
+      const SHAPE_POLY_SUMMARY_LINE_GAP_PX = 6;
       /** 汇总文案逐行下移时的近似行高（与字号匹配） */
-      const SHAPE_POLY_SUMMARY_LINE_HEIGHT_PX = 18;
+      const SHAPE_POLY_SUMMARY_LINE_HEIGHT_PX = 22;
       /** 凹四边形四条边均贴尺标注后显示 */
       const SHAPE_DART_FULL_EDGE_SUMMARY = "1+2+3+4=10(厘米)";
       /** 正方形四条边均贴尺标注后显示 */
@@ -2594,7 +2833,7 @@
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.strokeStyle = "rgba(255,255,255,0.92)";
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 3.5;
         ctx.lineJoin = "round";
         ctx.fillStyle = "#4a3728";
         let y = yTop;
@@ -2702,7 +2941,7 @@
           ctx.restore();
 
           const nGuideLines = guideYs.length;
-          const nGuideLabels = Math.min(SHAPE_ORDER_LABELS.length, nGuideLines);
+          const nGuideLabels = Math.min(GUIDE_LINE_ORDER_LABELS.length, nGuideLines);
           if (nGuideLabels > 0) {
             ctx.save();
             ctx.font = "600 16px system-ui, 'Segoe UI', sans-serif";
@@ -2712,7 +2951,7 @@
             for (let bi = 0; bi < nGuideLabels; bi++) {
               const gi = bi;
               const gyl = guideYs[gi];
-              const t = SHAPE_ORDER_LABELS[bi];
+              const t = GUIDE_LINE_ORDER_LABELS[bi];
               ctx.strokeStyle = "rgba(255,255,255,0.92)";
               ctx.lineWidth = 3;
               ctx.lineJoin = "round";
@@ -2777,7 +3016,7 @@
           }
         }
         const nShapeLabels = Math.min(
-          SHAPE_ORDER_LABELS.length,
+          POLY_SHAPE_ORDER_LABELS.length,
           polyShapesOrdered.length
         );
         if (polyShapesOrdered.length > 0) {
@@ -2800,7 +3039,7 @@
             const yBelow = s.y + bb.h + gap;
             const showGlyph = li < nShapeLabels;
             if (showGlyph) {
-              const t = SHAPE_ORDER_LABELS[li];
+              const t = POLY_SHAPE_ORDER_LABELS[li];
               ctx.strokeText(t, cx, yBelow);
               ctx.fillText(t, cx, yBelow);
             }
@@ -2911,38 +3150,40 @@
         };
       }
 
-      /**
-       * 将凹四边形 / 正方形 / 平行四边形放入画布。(cx,cy) 为包围盒中心，缺省为画布中央。
-       */
-      function addPaletteShapeToCanvas(type, cx, cy) {
-        if (
-          type !== "dart" &&
-          type !== "square" &&
-          type !== "parallelogram"
-        ) {
-          return;
-        }
-        let w;
-        let h;
-        if (type === "dart") {
-          w = DART.bbW;
-          h = DART.bbH;
-        } else if (type === "square") {
-          w = SQUARE_S;
-          h = SQUARE_S;
-        } else {
-          w = PARA_SKEW + PARA_W;
-          h = PARA_H;
-        }
+      /** 将凹四边形 / 正方形 / 平行四边形横排放入画布：左、中、右，竖向略偏上，间隙见 PALETTE_THREE_SHAPES_GAP_PX */
+      function addThreePolygonsRowToCanvas() {
+        pushUndoSnapshot();
         const cw = cssW > 0 ? cssW : wrap.clientWidth;
         const ch = cssH > 0 ? cssH : wrap.clientHeight;
-        const pcx = cx != null ? cx : cw / 2;
-        const pcy = cy != null ? cy : ch / 2;
-        let x = pcx - w / 2;
-        let y = pcy - h / 2;
-        x = Math.max(0, Math.min(cw - w, x));
-        y = Math.max(0, Math.min(ch - h, y));
-        shapes.push({ id: nextId++, type: type, x: x, y: y });
+        const w0 = DART.bbW;
+        const w1 = SQUARE_S;
+        const w2 = PARA_SKEW + PARA_W;
+        const gap = PALETTE_THREE_SHAPES_GAP_PX;
+        const totalW = w0 + gap + w1 + gap + w2;
+        let left = (cw - totalW) / 2;
+        if (left < 6) {
+          left = 6;
+        }
+        const cy = ch / 2 - PALETTE_THREE_SHAPES_CENTER_UP_PX;
+        const h0 = DART.bbH;
+        const h1 = SQUARE_S;
+        const h2 = PARA_H;
+
+        function placePoly(type, x, y, bw, bh) {
+          const nx = Math.max(0, Math.min(cw - bw, x));
+          const ny = Math.max(0, Math.min(ch - bh, y));
+          shapes.push({ id: nextId++, type: type, x: nx, y: ny });
+        }
+
+        placePoly("dart", left, cy - h0 / 2, w0, h0);
+        placePoly("square", left + w0 + gap, cy - h1 / 2, w1, h1);
+        placePoly(
+          "parallelogram",
+          left + w0 + gap + w1 + gap,
+          cy - h2 / 2,
+          w2,
+          h2
+        );
         redraw();
       }
 
@@ -2973,24 +3214,55 @@
         canvas.style.cursor = hitTest(px, py) != null ? "grab" : "default";
       }
 
+      function canvasHasCompassShape() {
+        for (let i = 0; i < shapes.length; i++) {
+          if (shapes[i].type === "compass") {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      /** 与拖动圆规时相同的画布边界，取 roughly 中央 */
+      function defaultCompassPlacementCss() {
+        const cw = cssW > 0 ? cssW : wrap.clientWidth;
+        const ch = cssH > 0 ? cssH : wrap.clientHeight;
+        const margin = COMPASS_LEG_LEN + COMPASS_HINGE_R;
+        return {
+          x: Math.max(margin * 0.15, Math.min(cw - margin * 0.15, cw / 2)),
+          y: Math.max(
+            COMPASS_Y_MIN,
+            Math.min(
+              ch - margin * 0.15,
+              ch / 2 - COMPASS_PALETTE_PLACE_UP_OFFSET_PX
+            )
+          ),
+        };
+      }
+
+      function addCompassAtCss(px, py) {
+        shapes.push({
+          id: nextId++,
+          type: "compass",
+          x: px,
+          y: py,
+          spread: 0.35,
+          angle: 0,
+        });
+        if (!bottomGuideLineShown) {
+          bottomGuideLineShown = true;
+        }
+      }
+
       canvas.addEventListener("pointerdown", function (e) {
         if (e.button !== 0) return;
         const p = cssPointFromEvent(e);
         let id = hitTest(p.x, p.y);
         const paletteCompassEl = document.getElementById("paletteCompass");
         if (placeCompassMode) {
+          pushUndoSnapshot();
           if (id == null) {
-            shapes.push({
-              id: nextId++,
-              type: "compass",
-              x: p.x,
-              y: p.y,
-              spread: 0.35,
-              angle: 0,
-            });
-            if (!bottomGuideLineShown) {
-              bottomGuideLineShown = true;
-            }
+            addCompassAtCss(p.x, p.y);
             placeCompassMode = false;
             if (paletteCompassEl) {
               paletteCompassEl.classList.remove("active");
@@ -3009,6 +3281,7 @@
           !placeCompassMode &&
           hitBottomGuideLineBand(p.x, p.y)
         ) {
+          pushUndoSnapshot();
           const hitGy = hitGuideLineBandAt(p.x, p.y);
           if (hitGy == null) {
             return;
@@ -3039,6 +3312,7 @@
           return sh.id === id;
         });
         if (!s) return;
+        pushUndoSnapshot();
         dragShapeId = id;
         dragOffsetX = p.x - s.x;
         dragOffsetY = p.y - s.y;
@@ -3205,6 +3479,7 @@
       canvas.addEventListener("pointercancel", endDrag);
 
       function toggleRulerFromPalette() {
+        pushUndoSnapshot();
         let hasRuler = false;
         for (let i = 0; i < shapes.length; i++) {
           if (shapes[i].type === "ruler") {
@@ -3242,52 +3517,52 @@
 
       document.querySelectorAll(".palette-item[data-shape]").forEach(function (el) {
         const kind = el.getAttribute("data-shape");
-        if (kind === "ruler") {
-          el.addEventListener("click", function () {
-            toggleRulerFromPalette();
-          });
-          el.addEventListener("keydown", function (e) {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              toggleRulerFromPalette();
-            }
-          });
+        if (kind !== "ruler") {
           return;
         }
-        const pc = document.createElement("canvas");
-        pc.width = 72;
-        pc.height = 72;
-        const ctx = pc.getContext("2d");
-        ctx.translate(8, 8);
-        if (kind === "dart") {
-          const sc = Math.min(52 / DART.bbW, 38 / DART.bbH);
-          ctx.save();
-          ctx.scale(sc, sc);
-          drawDartStroke(ctx);
-          ctx.restore();
-        } else if (kind === "square") {
-          drawSquareStroke(ctx, 42);
-        } else if (kind === "parallelogram") {
-          drawParallelogramStroke(ctx, 40, 34, 10);
-        }
-        el.appendChild(pc);
-
-        function activateShapePaletteItem(e) {
-          if (e) e.preventDefault();
-          addPaletteShapeToCanvas(kind);
-        }
-        el.addEventListener("click", activateShapePaletteItem);
+        el.addEventListener("click", function () {
+          toggleRulerFromPalette();
+        });
         el.addEventListener("keydown", function (e) {
           if (e.key === "Enter" || e.key === " ") {
-            activateShapePaletteItem(e);
+            e.preventDefault();
+            toggleRulerFromPalette();
           }
         });
       });
+
+      (function initPaletteAddShapes() {
+        const el = document.getElementById("paletteAddShapes");
+        if (!el) return;
+        function activate(e) {
+          if (e) e.preventDefault();
+          addThreePolygonsRowToCanvas();
+        }
+        el.addEventListener("click", activate);
+        el.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            activate(e);
+          }
+        });
+      })();
 
       (function initPaletteCompass() {
         const el = document.getElementById("paletteCompass");
         if (!el) return;
         function activatePaletteCompass() {
+          pushUndoSnapshot();
+          if (!canvasHasCompassShape()) {
+            const c = defaultCompassPlacementCss();
+            addCompassAtCss(c.x, c.y);
+            if (compassPaletteButtonClicks === 0) {
+              compassPaletteButtonClicks = 1;
+            }
+            placeCompassMode = false;
+            el.classList.remove("active");
+            setCanvasCursorFromHover(lastHoverCss.x, lastHoverCss.y);
+            redraw();
+            return;
+          }
           compassPaletteButtonClicks++;
           if (compassPaletteButtonClicks === 1) {
             placeCompassMode = true;
@@ -3333,6 +3608,7 @@
       })();
 
       function clearCanvas() {
+        pushUndoSnapshot();
         shapes.length = 0;
         nextId = 1;
         persistedPolyEdgeHintKeys.clear();
@@ -3350,15 +3626,28 @@
         guideRulerSnapHints.length = 0;
         guideLineMarks.length = 0;
         guideLineRefDots.length = 0;
-        if (guideSweepAnim != null && guideSweepAnim.raf) {
-          cancelAnimationFrame(guideSweepAnim.raf);
-        }
-        guideSweepAnim = null;
+        cancelGuideSweepAnimation();
         const ce = document.getElementById("paletteCompass");
         if (ce) ce.classList.remove("active");
         setCanvasCursorFromHover(lastHoverCss.x, lastHoverCss.y);
         redraw();
       }
+
+      (function initPaletteUndo() {
+        const el = document.getElementById("paletteUndo");
+        if (!el) return;
+        function activate(e) {
+          if (e) e.preventDefault();
+          performUndo();
+        }
+        el.addEventListener("click", activate);
+        el.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            activate(e);
+          }
+        });
+        updatePaletteUndoButton();
+      })();
 
       (function initPaletteClear() {
         const el = document.getElementById("paletteClear");
