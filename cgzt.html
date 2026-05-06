@@ -40,16 +40,59 @@
       height: 100%;
       touch-action: none;
     }
-    .controls {
+    .bottom-bar {
       flex-shrink: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      gap: 12px 16px;
+      min-height: 104px;
+      padding: 12px 12px 12px 16px;
+    }
+    .bottom-bar__gutter {
+      min-width: 0;
+      pointer-events: none;
+    }
+    .controls {
+      grid-column: 2;
+      justify-self: center;
       display: flex;
       flex-direction: row;
       flex-wrap: wrap;
       justify-content: center;
       align-items: center;
       gap: 24px;
-      min-height: 104px;
-      padding: 12px 0;
+    }
+    .page-attribution {
+      grid-column: 3;
+      justify-self: end;
+      align-self: center;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      font-size: 1.2rem;
+      color: #5a5045;
+      letter-spacing: 0.05em;
+      line-height: 1.45;
+      user-select: none;
+    }
+    @media (max-width: 720px) {
+      .bottom-bar {
+        grid-template-columns: 1fr;
+        justify-items: center;
+      }
+      .bottom-bar__gutter {
+        display: none;
+      }
+      .controls {
+        grid-column: 1;
+      }
+      .page-attribution {
+        grid-column: 1;
+        justify-self: center;
+        align-items: center;
+      }
     }
     .palette-item {
       display: inline-flex;
@@ -105,9 +148,11 @@
     <div class="canvas-wrap">
       <canvas id="mainCanvas" width="800" height="600"></canvas>
     </div>
-    <div class="controls" aria-label="控件区域">
-      <div
-        class="palette-item palette-item--click-add"
+    <div class="bottom-bar">
+      <div class="bottom-bar__gutter" aria-hidden="true"></div>
+      <div class="controls" aria-label="控件区域">
+        <div
+          class="palette-item palette-item--click-add"
         role="button"
         tabindex="0"
         data-shape="triangle"
@@ -170,6 +215,11 @@
         title="清空画布：移除三角形、叶形、直尺、圆规、红线、批量标注字母及辅助线标记"
         aria-label="清除"
       >清除</div>
+      </div>
+      <footer class="page-attribution" aria-label="署名">
+        <span>301班 小于AI老师</span>
+        <span>原创AI设计</span>
+      </footer>
     </div>
   </div>
   <script>
