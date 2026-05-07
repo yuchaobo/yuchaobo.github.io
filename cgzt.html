@@ -21,7 +21,7 @@
       height: 100%;
       min-height: 100vh;
       padding: 12px;
-      gap: 12px;
+      gap: 8px;
       background: #fdf8e8;
     }
     .canvas-wrap {
@@ -45,13 +45,9 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
       align-items: center;
-      gap: 12px 16px;
-      min-height: 104px;
-      padding: 12px 12px 12px 16px;
-    }
-    .bottom-bar__gutter {
-      min-width: 0;
-      pointer-events: none;
+      gap: 8px 12px;
+      min-height: 0;
+      padding: 6px 10px 6px 12px;
     }
     .controls {
       grid-column: 2;
@@ -61,47 +57,59 @@
       flex-wrap: wrap;
       justify-content: center;
       align-items: center;
-      gap: 24px;
+      gap: 12px;
     }
     .page-attribution {
-      grid-column: 3;
-      justify-self: end;
-      align-self: center;
       display: flex;
       flex-direction: column;
-      align-items: flex-end;
       gap: 4px;
-      font-size: 1.2rem;
+      font-size: 1.05rem;
       color: #5a5045;
       letter-spacing: 0.05em;
       line-height: 1.45;
       user-select: none;
     }
+    .page-attribution--left {
+      grid-column: 1;
+      justify-self: start;
+      align-self: center;
+      align-items: flex-start;
+    }
+    .page-attribution--right {
+      grid-column: 3;
+      justify-self: end;
+      align-self: center;
+      align-items: flex-end;
+    }
     @media (max-width: 720px) {
       .bottom-bar {
         grid-template-columns: 1fr;
-        justify-items: center;
-      }
-      .bottom-bar__gutter {
-        display: none;
+        justify-items: stretch;
       }
       .controls {
         grid-column: 1;
-      }
-      .page-attribution {
-        grid-column: 1;
         justify-self: center;
-        align-items: center;
+        width: 100%;
+      }
+      .page-attribution--left {
+        grid-column: 1;
+        justify-self: start;
+        align-items: flex-start;
+      }
+      .page-attribution--right {
+        grid-column: 1;
+        justify-self: end;
+        align-items: flex-end;
       }
     }
     .palette-item {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 88px;
-      height: 88px;
+      width: 76px;
+      height: 76px;
       border: 1px solid #d0d0d0;
-      border-radius: 6px;
+      border-radius: 5px;
       background: #fff;
       cursor: grab;
       user-select: none;
@@ -111,7 +119,7 @@
       cursor: grabbing;
     }
     .palette-item--label {
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: normal;
       color: #4a3728;
       letter-spacing: 0.12em;
@@ -122,7 +130,7 @@
       outline-offset: 2px;
     }
     .palette-item--redline {
-      font-size: 1.05rem;
+      font-size: 0.98rem;
       color: #b71c1c;
       letter-spacing: 0.08em;
       cursor: pointer;
@@ -149,7 +157,9 @@
       <canvas id="mainCanvas" width="800" height="600"></canvas>
     </div>
     <div class="bottom-bar">
-      <div class="bottom-bar__gutter" aria-hidden="true"></div>
+      <footer class="page-attribution page-attribution--left" aria-label="学校署名">
+        <span>石实实验学校原创设计</span>
+      </footer>
       <div class="controls" aria-label="控件区域">
         <div
           class="palette-item palette-item--click-add"
@@ -172,7 +182,7 @@
         data-shape="ruler"
         role="button"
         tabindex="0"
-        title="点击在画布中央显示直尺，再点击隐藏；轻点直尺切换角度，拖动可移动"
+        title="点击在画布中央显示直尺，再点击隐藏；轻点直尺切换角度，拖动可移动；拖到水平参考线附近松手且尺面近似水平：自动摆正，刻度 0 对齐该线上最靠左的点（须已有手动基准点或圆规脚印），尺身略低于参考线以免遮住线；拖到三角形或叶形边附近松手则贴边吸附"
         aria-label="直尺"
       >直尺</div>
       <div
@@ -216,9 +226,8 @@
         aria-label="清除"
       >清除</div>
       </div>
-      <footer class="page-attribution" aria-label="署名">
+      <footer class="page-attribution page-attribution--right" aria-label="班级与教师">
         <span>301班 小于AI老师</span>
-        <span>石实实验 原创AI设计</span>
       </footer>
     </div>
   </div>
@@ -241,6 +250,8 @@
         (LEAF_PERIM_TARGET_CM * TRI_K) / LEAF_REF_OUTLINE_PERIM_PX;
       const LEAF_W = 200 * LEAF_DIM_SCALE;
       const LEAF_H = 207.5 * LEAF_DIM_SCALE;
+      /** 从调色板添加三角形/叶形时，相对竖直方向居中再略向上偏移（px） */
+      const PALETTE_SHAPE_INITIAL_OFFSET_UP = 36;
       const LABEL_W = 48;
       const LABEL_H = 54;
       /** 参考线圆规标记点下方字母周期：A → B → C → (A) → … */
@@ -276,6 +287,10 @@
       const RULER_TRI_SNAP_DIST = 26;
       /** 吸附后刻度带与图形边之间的空隙（像素） */
       const RULER_TRI_EDGE_GAP = 16;
+      /** 直尺贴近底部参考线时的竖直吸附容差（像素，与参考页 cgztlx 一致） */
+      const RULER_GUIDE_SNAP_DIST = 16;
+      /** 吸附参考线后尺顶与参考线之间的间隙，避免尺身遮住参考线 */
+      const RULER_GUIDE_SNAP_LINE_CLEARANCE_PX = 2;
 
       const COMPASS_LEG_LEN = 218;
       const COMPASS_HINGE_R = 16;
@@ -352,7 +367,7 @@
       /** 吸附到辅助线的标记：x 为脚上一点的参考线 x；pivot 为该次吸附时左脚尖（左腿）世界坐标，作圆弧圆心 */
       /** @type {{ x: number; pivotX: number; pivotY: number }[]} */
       let guideLineMarks = [];
-      /** 用户在底部参考线上点击放置的基准点（仅 x，y 与辅助线一致；绘制成向上短竖线） */
+      /** 用户在底部参考线上点击放置的基准点（仅 x）；整条参考线至多手动添加一处，之后再点不增加（绘制成向上短竖线） */
       /** @type {{ x: number }[]} */
       let guideLineRefDots = [];
       /** 圆规吸附参考线时：绕左脚枢轴刚体转动；扫弧为劣弧，端点「参考线上方 → 下方」，canvas 按最短劣弧方向绘制 */
@@ -381,6 +396,8 @@
       const GUIDE_REF_TICK_LEN_PX = 12;
       /** 参考线上「点旁弧」的目标弧长（像素），半径变化时调整圆心角保持弧长相近 */
       const GUIDE_MARK_ARC_LENGTH_PX = 30;
+      /** 三角形三边与参考线上各段的对应示意（弧/箭头）描边，其余参考线元素保持原色 */
+      const GUIDE_MAPPING_CURVE_COLOR = "#8dc9f4";
       /** @type {"L" | "R" | null} */
       let compassLegDrag = null;
       let lastHoverCss = { x: 0, y: 0 };
@@ -590,7 +607,7 @@
         const ang = s.angle || 0;
         if (Math.abs(Math.sin(ang)) > 0.35) return false;
         const gy = bottomGuideLineY();
-        return verticalDistRulerAabbToLine(b, gy) <= RULER_EDGE_SNAP_DIST;
+        return verticalDistRulerAabbToLine(b, gy) <= RULER_GUIDE_SNAP_DIST;
       }
 
       /** 直尺贴近水平线段（叶形下化直红线）：x 与线段重叠、尺近似水平、竖直距离在容差内 */
@@ -1069,7 +1086,7 @@
         );
         /** 左竖边专用：略抬峰值；控制点用更高 y，且末段再下落 */
         const H_outerDraw = H_outer + 34;
-        const stroke = "#1a4d72";
+        const stroke = GUIDE_MAPPING_CURVE_COLOR;
         const lineW = 2.25;
 
         function drawCubicArrow(sx, sy, c1x, c1y, c2x, c2y, ex, ey) {
@@ -2325,6 +2342,47 @@
         return typeof m === "number" ? m : m.x;
       }
 
+      /**
+       * 底部参考线上：手动基准短竖线与圆规脚印标记里，横坐标最靠左的一点（用于直尺 0 刻度对齐）。
+       * 无任何点时返回 null。
+       */
+      function leftmostGuidePointXOnBottomLine() {
+        let minX = Infinity;
+        for (let di = 0; di < guideLineRefDots.length; di++) {
+          minX = Math.min(minX, guideLineRefDots[di].x);
+        }
+        for (let mi = 0; mi < guideLineMarks.length; mi++) {
+          minX = Math.min(minX, guideMarkFootX(guideLineMarks[mi]));
+        }
+        return minX === Infinity ? null : minX;
+      }
+
+      /**
+       * 松开直尺拖动后：尺面近似水平且贴近底部参考线时，摆正为水平；刻度 0 的世界 x 对齐线上最左点；
+       * 尺体整体下移，使参考线留在尺面上方空隙内（须已有基准点或圆规脚印，否则不吸附）。
+       */
+      function trySnapRulerToBottomGuideLine(ruler) {
+        if (!bottomGuideLineShown) return false;
+        const gy = bottomGuideLineY();
+        const gl = 10;
+        const gr = cssW - 10;
+        const b = rulerAabb(ruler);
+        if (b.maxX < gl || b.minX > gr) return false;
+        const ra = ruler.angle || 0;
+        if (Math.abs(Math.sin(ra)) > 0.35) return false;
+        if (verticalDistRulerAabbToLine(b, gy) > RULER_GUIDE_SNAP_DIST) {
+          return false;
+        }
+        const anchorX = leftmostGuidePointXOnBottomLine();
+        if (anchorX == null) return false;
+        const mxLoc = (RULER_W - RULER_SCALE_W) / 2;
+        const u0 = mxLoc - RULER_W / 2;
+        ruler.angle = 0;
+        ruler.x = anchorX - u0;
+        ruler.y = gy + RULER_GUIDE_SNAP_LINE_CLEARANCE_PX + RULER_H / 2;
+        return true;
+      }
+
       function guideMarksSortedFootXs(marks) {
         const xs = marks.map(guideMarkFootX);
         return xs.slice().sort(function (a, b) {
@@ -3120,20 +3178,15 @@
           !placeCompassMode &&
           hitBottomGuideLineBand(p.x, p.y)
         ) {
+          if (guideLineRefDots.length >= 1) {
+            redraw();
+            return;
+          }
           const gl = 10;
           const gr = cssW - 10;
           const x = Math.max(gl, Math.min(gr, p.x));
-          let dup = false;
-          for (let di = 0; di < guideLineRefDots.length; di++) {
-            if (Math.abs(guideLineRefDots[di].x - x) < 8) {
-              dup = true;
-              break;
-            }
-          }
-          if (!dup) {
-            recordUndoBeforeChange();
-            guideLineRefDots.push({ x: x });
-          }
+          recordUndoBeforeChange();
+          guideLineRefDots.push({ x: x });
           redraw();
           return;
         }
@@ -3289,14 +3342,12 @@
           compassTap.moved &&
           compassLegDrag == null;
 
-        if (
-          s &&
-          s.type === "ruler" &&
-          rulerTap != null &&
-          rulerTap.moved &&
-          trySnapRulerToNearestShapeEdge(s, pEnd.x, pEnd.y)
-        ) {
-          needRedraw = true;
+        if (s && s.type === "ruler" && rulerTap != null && rulerTap.moved) {
+          if (trySnapRulerToNearestShapeEdge(s, pEnd.x, pEnd.y)) {
+            needRedraw = true;
+          } else if (trySnapRulerToBottomGuideLine(s)) {
+            needRedraw = true;
+          }
         }
         if (
           s &&
@@ -3425,7 +3476,7 @@
         const cw = cssW > 0 ? cssW : wrap.clientWidth;
         const ch = cssH > 0 ? cssH : wrap.clientHeight;
         let x = (cw - w) / 2;
-        let y = (ch - h) / 2;
+        let y = (ch - h) / 2 - PALETTE_SHAPE_INITIAL_OFFSET_UP;
         x = Math.max(0, Math.min(cw - w, x));
         y = Math.max(0, Math.min(ch - h, y));
         recordUndoBeforeChange();
