@@ -145,6 +145,11 @@
       letter-spacing: 0.12em;
       -webkit-user-drag: none;
     }
+    .palette-item[aria-disabled="true"] {
+      opacity: 0.42;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
     .palette-item--click-add {
       cursor: pointer;
       user-select: none;
@@ -217,6 +222,7 @@
         tabindex="0"
         title="撤销上一步操作（最多保留约 50 步）"
         aria-label="撤销"
+        aria-disabled="true"
       >撤销</div>
       <div
         class="palette-item palette-item--label palette-item--clear"
@@ -429,6 +435,20 @@
         while (undoStack.length > UNDO_STACK_MAX) {
           undoStack.shift();
         }
+        updatePaletteUndoButton();
+      }
+
+      function updatePaletteUndoButton() {
+        const el = document.getElementById("paletteUndo");
+        if (!el) return;
+        const empty = undoStack.length === 0;
+        if (empty) {
+          el.setAttribute("aria-disabled", "true");
+          el.setAttribute("tabindex", "-1");
+        } else {
+          el.removeAttribute("aria-disabled");
+          el.setAttribute("tabindex", "0");
+        }
       }
 
       function applyUndoSnapshot(snap) {
@@ -482,6 +502,7 @@
         }
         const snap = undoStack.pop();
         applyUndoSnapshot(snap);
+        updatePaletteUndoButton();
       }
 
       const scratch = document.createElement("canvas");
@@ -934,6 +955,7 @@
         };
       }
 
+      /** 松手后调用：直尺刻度方向与某三角形边近似平行且距离足够近时，记入边长标注键（不在拖动过程中检测）。 */
       function tryAddRulerTriangleAlignmentHints() {
         const rulers = shapes.filter(function (s) {
           return s.type === "ruler";
@@ -3029,7 +3051,6 @@
           ctx.restore();
         }
 
-        tryAddRulerTriangleAlignmentHints();
         prunePersistedEdgeHints();
         const lengthHints = buildPersistedLengthHintsForDraw();
         if (lengthHints.length > 0) {
@@ -3379,6 +3400,11 @@
               needRedraw = true;
             }
           }
+        }
+
+        if (s && s.type === "ruler" && rulerTap != null && rulerTap.moved) {
+          tryAddRulerTriangleAlignmentHints();
+          needRedraw = true;
         }
 
         rulerTap = null;
@@ -3749,16 +3775,21 @@
       (function initPaletteUndo() {
         const el = document.getElementById("paletteUndo");
         if (!el) return;
-        el.addEventListener("click", function (e) {
-          e.preventDefault();
+        function tryUndo(e) {
+          if (el.getAttribute("aria-disabled") === "true") {
+            if (e) e.preventDefault();
+            return;
+          }
+          if (e) e.preventDefault();
           undoLastChange();
-        });
+        }
+        el.addEventListener("click", tryUndo);
         el.addEventListener("keydown", function (e) {
           if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            undoLastChange();
+            tryUndo(e);
           }
         });
+        updatePaletteUndoButton();
       })();
 
       (function initPaletteClear() {
