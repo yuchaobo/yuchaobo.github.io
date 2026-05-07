@@ -65,7 +65,7 @@
       gap: 4px;
       font-size: 1.05rem;
       font-weight: 600;
-      color: #5a5045;
+      color: #c62828;
       letter-spacing: 0.05em;
       line-height: 1.45;
       user-select: none;
@@ -194,7 +194,7 @@
         id="paletteAlignGuides"
         role="button"
         tabindex="0"
-        title="将三条参考线上已有的点（基准短竖线与圆规吸附标记）按线分别水平平移：每条线最左侧的点对齐到同一条竖线上，且落在该参考线段从左量起约 1/8 长度处；对齐后在最左点 x 处绘制竖直虚线（略高于最上参考线、略低于最下参考线）；无参考线时无效"
+        title="将三条参考线上已有的点（基准短竖线与圆规吸附标记）按线分别水平平移：每条线最左侧的点对齐到同一条竖线上，且落在该参考线段从左量起约 1/8 长度处；对齐后在最左点 x 处绘制竖直虚线（略高于最上参考线、略低于最下参考线）；同时清除参考线下由直尺吸附产生的固定厘米/毫米长度文案；无参考线时无效"
         aria-label="对齐参考线点"
       >对齐</div>
       <div
@@ -215,9 +215,8 @@
         aria-label="清除"
       >清除</div>
       </div>
-      <footer class="page-attribution" aria-label="署名">
+      <footer class="page-attribution page-attribution--right" aria-label="班级与教师">
         <span>301班 小于AI老师</span>
-        <span>石实实验 原创AI设计</span>
       </footer>
     </div>
   </div>
@@ -2342,7 +2341,7 @@
 
       /**
        * 每条参考线单独水平平移其上所有点：该线最靠左的点移到线段 [左端,右端] 上距左端 1/8 长处，
-       * 从而使各条线上「最左点」竖直对齐。
+       * 从而使各条线上「最左点」竖直对齐。执行时清空参考线下方的直尺吸附固定长度文案（guideRulerSnapHints）。
        */
       function alignGuideLinePointsToOneEighth() {
         if (!bottomGuideLineShown) return;
@@ -2353,6 +2352,7 @@
         const segLen = gr - gl;
         if (segLen <= 1) return;
         pushUndoSnapshot();
+        guideRulerSnapHints.length = 0;
         guideAlignVerticalDashActive = true;
         const targetX = gl + segLen / 8;
 
