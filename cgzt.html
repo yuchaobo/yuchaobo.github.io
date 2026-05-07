@@ -188,7 +188,7 @@
         data-shape="ruler"
         role="button"
         tabindex="0"
-        title="点击在画布中央显示直尺，再点击隐藏；轻点直尺切换角度，拖动可移动；拖到水平参考线附近松手且尺面近似水平：自动摆正，刻度 0 对齐该线上最靠左的点（须已有手动基准点或圆规脚印），尺身略低于参考线以免遮住线；拖到三角形或叶形边附近松手则贴边吸附"
+        title="点击在画布中央显示直尺，再点击隐藏；轻点直尺切换角度，拖动可移动；拖到水平红线段（直线）附近松手且尺面近似水平：自动摆正，刻度 0 对齐该线段在左侧的端点；拖到水平参考线附近松手且尺面近似水平：自动摆正，刻度 0 对齐该线上最靠左的点（须已有手动基准点或圆规脚印），尺身略低于参考线以免遮住线；拖到三角形或叶形边附近松手则贴边吸附"
         aria-label="直尺"
       >直尺</div>
       <div
@@ -266,6 +266,8 @@
       const TRI_VERTEX_LABEL_GAP = 12;
       /** 标记点在参考线上的 y，字母框顶部下移（px） */
       const GUIDE_MARK_LABEL_BELOW_GAP = 12;
+      /** 「12厘米」文案：相对参考线 y 下移（px），置于首末标记点水平居中之下 */
+      const GUIDE_12CM_LABEL_OFFSET_BELOW_PX = 13;
 
       /** 画布上 1 cm 的像素长度，与三角形直角边 3k、4k、斜边 5k（k=60）一致，可用直尺读出 3、4、5 cm */
       const PX_PER_CM = TRI_K;
@@ -298,6 +300,8 @@
       const RULER_GUIDE_SNAP_DIST = 16;
       /** 吸附参考线后尺顶与参考线之间的间隙，避免尺身遮住参考线 */
       const RULER_GUIDE_SNAP_LINE_CLEARANCE_PX = 2;
+      /** 吸附水平红线后整尺略下移，避免尺面盖住红线（像素） */
+      const RULER_REDLINE_SNAP_BELOW_GAP_PX = 17;
 
       const COMPASS_LEG_LEN = 218;
       const COMPASS_HINGE_R = 16;
@@ -927,6 +931,44 @@
             String(targetShape.id) + "-" + String(best.ei)
           );
         }
+        return true;
+      }
+
+      /**
+       * 松开直尺拖动后：贴近水平红线段（恰好两端点）时，摆正为水平；刻度 0 对齐线段在左侧的端点；整尺略下移以免盖住红线。
+       */
+      function trySnapRulerToStraightHorizontalRedLine(ruler, px, py) {
+        const mxLoc = (RULER_W - RULER_SCALE_W) / 2;
+        const ly0 = RULER_SCALE_LINE_Y;
+        const u0 = mxLoc - RULER_W / 2;
+        const v0 = ly0 - RULER_H / 2;
+        let best = null;
+        let bestD = 1e9;
+        for (let idx = 0; idx < shapes.length; idx++) {
+          const sh = shapes[idx];
+          if (sh.type !== "redline") continue;
+          const pts = sh.points;
+          if (!pts || pts.length !== 2) continue;
+          const p0 = pts[0];
+          const p1 = pts[1];
+          if (Math.abs(p0.y - p1.y) > 2.5) continue;
+          const dist = distPointSeg(px, py, p0.x, p0.y, p1.x, p1.y);
+          if (dist < bestD) {
+            bestD = dist;
+            best = { p0: p0, p1: p1 };
+          }
+        }
+        if (best == null || bestD > RULER_TRI_SNAP_DIST) {
+          return false;
+        }
+        if (!rulerCloseToHorizontalSegment(ruler, best.p0, best.p1, 8)) {
+          return false;
+        }
+        const xLeft = Math.min(best.p0.x, best.p1.x);
+        const yLine = (best.p0.y + best.p1.y) * 0.5;
+        ruler.angle = 0;
+        ruler.x = xLeft - u0;
+        ruler.y = yLine - v0 + RULER_REDLINE_SNAP_BELOW_GAP_PX;
         return true;
       }
 
@@ -2381,6 +2423,33 @@
       }
 
       /**
+       * 「12厘米」水平位置：参考线上所有点（基准竖线 + 圆规脚印）最左与最右 x 的中点；
+       * 无任何点时退回画布水平居中。
+       */
+      function guideLine12cmLabelCenterX() {
+        const xs = [];
+        for (let di = 0; di < guideLineRefDots.length; di++) {
+          xs.push(guideLineRefDots[di].x);
+        }
+        for (let mi = 0; mi < guideLineMarks.length; mi++) {
+          xs.push(guideMarkFootX(guideLineMarks[mi]));
+        }
+        if (xs.length === 0) {
+          return cssW / 2;
+        }
+        let minX = xs[0];
+        let maxX = xs[0];
+        for (let i = 1; i < xs.length; i++) {
+          if (xs[i] < minX) minX = xs[i];
+          if (xs[i] > maxX) maxX = xs[i];
+        }
+        if (minX === maxX) {
+          return minX;
+        }
+        return (minX + maxX) / 2;
+      }
+
+      /**
        * 松开直尺拖动后：尺面近似水平且贴近底部参考线时，摆正为水平；刻度 0 的世界 x 对齐线上最左点；
        * 尺体整体下移，使参考线留在尺面上方空隙内（须已有基准点或圆规脚印，否则不吸附）。
        */
@@ -3035,7 +3104,7 @@
 
         if (bottomGuideLineShown && guideLine12cmLabelPersisted) {
           const gy = bottomGuideLineY();
-          const cx = cssW / 2;
+          const cx = guideLine12cmLabelCenterX();
           ctx.save();
           ctx.font = "600 19px system-ui, sans-serif";
           ctx.textAlign = "center";
@@ -3045,7 +3114,7 @@
           ctx.lineWidth = 3;
           ctx.lineJoin = "round";
           const t12 = "12厘米";
-          const labelY = gy + 6;
+          const labelY = gy + GUIDE_12CM_LABEL_OFFSET_BELOW_PX;
           ctx.strokeText(t12, cx, labelY);
           ctx.fillText(t12, cx, labelY);
           ctx.restore();
@@ -3367,6 +3436,8 @@
         if (s && s.type === "ruler" && rulerTap != null && rulerTap.moved) {
           if (trySnapRulerToNearestShapeEdge(s, pEnd.x, pEnd.y)) {
             needRedraw = true;
+          } else if (trySnapRulerToStraightHorizontalRedLine(s, pEnd.x, pEnd.y)) {
+            needRedraw = true;
           } else if (trySnapRulerToBottomGuideLine(s)) {
             needRedraw = true;
           }
@@ -3479,9 +3550,16 @@
           snapRedlineToNearestShape(rl);
           shapes.push(rl);
         }
+        exitDrawRedLineMode();
         redraw();
         const p = cssPointFromEvent(e);
         setCanvasCursorFromHover(p.x, p.y);
+      }
+
+      function exitDrawRedLineMode() {
+        drawRedLineMode = false;
+        const rle = document.getElementById("paletteRedLine");
+        if (rle) rle.classList.remove("active");
       }
 
       canvas.addEventListener("pointerup", finalizeRedLineStroke);
