@@ -21,7 +21,7 @@
       height: 100%;
       min-height: 100vh;
       padding: 12px;
-      gap: 12px;
+      gap: 8px;
       background: #fdf8e8;
     }
     .canvas-wrap {
@@ -45,13 +45,9 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
       align-items: center;
-      gap: 12px 16px;
-      min-height: 104px;
-      padding: 12px 12px 12px 16px;
-    }
-    .bottom-bar__gutter {
-      min-width: 0;
-      pointer-events: none;
+      gap: 8px 12px;
+      min-height: 0;
+      padding: 6px 10px 6px 12px;
     }
     .controls {
       grid-column: 2;
@@ -61,47 +57,60 @@
       flex-wrap: wrap;
       justify-content: center;
       align-items: center;
-      gap: 24px;
+      gap: 12px;
     }
     .page-attribution {
-      grid-column: 3;
-      justify-self: end;
-      align-self: center;
       display: flex;
       flex-direction: column;
-      align-items: flex-end;
       gap: 4px;
-      font-size: 1.2rem;
+      font-size: 1.05rem;
+      font-weight: 600;
       color: #5a5045;
       letter-spacing: 0.05em;
       line-height: 1.45;
       user-select: none;
     }
+    .page-attribution--left {
+      grid-column: 1;
+      justify-self: start;
+      align-self: center;
+      align-items: flex-start;
+    }
+    .page-attribution--right {
+      grid-column: 3;
+      justify-self: end;
+      align-self: center;
+      align-items: flex-end;
+    }
     @media (max-width: 720px) {
       .bottom-bar {
         grid-template-columns: 1fr;
-        justify-items: center;
-      }
-      .bottom-bar__gutter {
-        display: none;
+        justify-items: stretch;
       }
       .controls {
         grid-column: 1;
-      }
-      .page-attribution {
-        grid-column: 1;
         justify-self: center;
-        align-items: center;
+        width: 100%;
+      }
+      .page-attribution--left {
+        grid-column: 1;
+        justify-self: start;
+        align-items: flex-start;
+      }
+      .page-attribution--right {
+        grid-column: 1;
+        justify-self: end;
+        align-items: flex-end;
       }
     }
     .palette-item {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 88px;
-      height: 88px;
+      width: 70px;
+      height: 70px;
       border: 1px solid #d0d0d0;
-      border-radius: 6px;
+      border-radius: 5px;
       background: #fff;
       cursor: grab;
       user-select: none;
@@ -111,7 +120,7 @@
       cursor: grabbing;
     }
     .palette-item--label {
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: normal;
       color: #4a3728;
       letter-spacing: 0.12em;
@@ -139,7 +148,7 @@
       pointer-events: none;
     }
     .palette-item--add-shapes {
-      width: 116px;
+      width: 98px;
       letter-spacing: 0.06em;
       cursor: pointer;
       -webkit-user-drag: none;
@@ -152,7 +161,9 @@
       <canvas id="mainCanvas" width="800" height="600"></canvas>
     </div>
     <div class="bottom-bar">
-      <div class="bottom-bar__gutter" aria-hidden="true"></div>
+      <footer class="page-attribution page-attribution--left" aria-label="学校署名">
+        <span>石实实验学校原创设计</span>
+      </footer>
       <div class="controls" aria-label="控件区域">
       <div
         class="palette-item palette-item--label palette-item--add-shapes"
@@ -175,7 +186,7 @@
         id="paletteCompass"
         role="button"
         tabindex="0"
-        title="画布上尚无圆规时：点此一次即在画布中央放置圆规（并显示最上①号参考线）；已有圆规时：第 1 次点此进入放置模式，再在画布空白处点击可再放一个圆规；第 2、3 次点此：自上向下依次增加②、③号线（与①等距）；第 4 次起不再增加参考线；实线、两脚贴近可吸附、线上每条约一个基准短竖线（同线再点则移动）；链式吸附须在同一条线上；拖动铰链或腿身移动圆规，拖动腿尖张合；首次两脚靠近某条辅助线松手吸附并记下两点，之后须将左脚尖移到上一右脚标记附近再松手（仍在该线上），左脚落在该点、记下新右脚点（可继续得到第四、五点…）；拖动枢轴移动后，指针靠近凹四边形、正方形或平行四边形某边松手时，自动旋转并张开两脚对准该边两端"
+        title="画布上尚无圆规时：点此一次即在画布中央放置圆规（并显示最上①号参考线）；已有圆规时：第 1 次点此进入放置模式，再在画布空白处点击可再放一个圆规；第 2、3 次点此：自上向下依次增加②、③号线（与①等距）；第 4 次起不再增加参考线；实线、两脚贴近可吸附、线上每条约一个基准短竖线（同线再点不改变位置）；链式吸附须在同一条线上；拖动铰链或腿身移动圆规，拖动腿尖张合；首次两脚靠近某条辅助线松手吸附并记下两点，之后须将左脚尖移到上一右脚标记附近再松手（仍在该线上），左脚落在该点、记下新右脚点（可继续得到第四、五点…）；拖动枢轴移动后，指针靠近凹四边形、正方形或平行四边形某边松手时，自动旋转并张开两脚对准该边两端"
         aria-label="圆规"
       >圆规</div>
       <div
@@ -204,9 +215,8 @@
         aria-label="清除"
       >清除</div>
       </div>
-      <footer class="page-attribution" aria-label="署名">
+      <footer class="page-attribution page-attribution--right" aria-label="班级与教师">
         <span>301班 小于AI老师</span>
-        <span>石实实验 原创AI设计</span>
       </footer>
     </div>
   </div>
@@ -489,7 +499,7 @@
       /** 吸附到辅助线的标记：x 为脚上一点的参考线 x；gy 为该辅助线 y（缺省为主线）；pivot 为该次吸附时左脚尖世界坐标 */
       /** @type {{ x: number; pivotX: number; pivotY: number; gy?: number }[]} */
       let guideLineMarks = [];
-      /** 用户在参考线上点击放置的基准点（绘制成向上短竖线）；gy 缺省为当前最下一条可见参考线；每条参考线至多一个点，同线再点则移动该点 */
+      /** 用户在参考线上点击放置的基准点（绘制成向上短竖线）；gy 缺省为当前最下一条可见参考线；每条参考线至多一个点，同线再点不改变位置 */
       /** @type {{ x: number; gy?: number }[]} */
       let guideLineRefDots = [];
       /** 圆规调色板累计点击次数（清空画布归零）；第 1 次进入放置模式，第 2 次起增加上方辅助参考线 */
@@ -3281,7 +3291,6 @@
           !placeCompassMode &&
           hitBottomGuideLineBand(p.x, p.y)
         ) {
-          pushUndoSnapshot();
           const hitGy = hitGuideLineBandAt(p.x, p.y);
           if (hitGy == null) {
             return;
@@ -3299,11 +3308,10 @@
             }
           }
           if (lineIdx >= 0) {
-            guideLineRefDots[lineIdx].x = x;
-            guideLineRefDots[lineIdx].gy = hitGy;
-          } else {
-            guideLineRefDots.push({ x: x, gy: hitGy });
+            return;
           }
+          pushUndoSnapshot();
+          guideLineRefDots.push({ x: x, gy: hitGy });
           redraw();
           return;
         }
