@@ -28,11 +28,11 @@
     .panel {
       top: 14px;
       left: 14px;
-      width: min(220px, 42vw);
-      padding: 12px;
+      width: min(252px, 46vw);
+      padding: 15px;
       background: rgba(18, 24, 38, 0.82);
       border: 1px solid rgba(120, 150, 200, 0.22);
-      border-radius: 14px;
+      border-radius: 16px;
       backdrop-filter: blur(10px);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
     }
@@ -40,33 +40,33 @@
     .field {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-      font-size: 13px;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
     }
     .field .icon {
-      width: 22px;
-      height: 22px;
-      border-radius: 6px;
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 12px;
+      font-size: 13px;
       flex-shrink: 0;
     }
     .icon-a { background: rgba(231, 76, 60, 0.35); color: #ff8a80; }
     .icon-b { background: rgba(155, 89, 182, 0.35); color: #ce93d8; }
     .field label { flex: 1; opacity: 0.92; white-space: nowrap; }
     .field .val {
-      min-width: 44px;
-      min-height: 28px;
-      padding: 5px 10px;
+      min-width: 64px;
+      min-height: 32px;
+      padding: 6px 12px;
       text-align: center;
       background: rgba(0, 0, 0, 0.45);
       border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 8px;
+      border-radius: 9px;
       cursor: pointer;
-      font-size: 15px;
+      font-size: 17px;
       font-weight: 600;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
@@ -81,18 +81,39 @@
       box-shadow: 0 0 12px rgba(52, 152, 219, 0.35);
     }
 
-    .btn-row { margin-top: 6px; }
+    .btn-row { margin-top: 8px; }
+    .btn-row > .btn:first-child { margin-top: 0; }
+    .btn-flow {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+      margin-top: 10px;
+    }
+    .btn-flow .btn { margin-top: 0; }
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 22px;
+      color: rgba(160, 190, 230, 0.8);
+      font-size: 17px;
+      line-height: 1;
+      pointer-events: none;
+      user-select: none;
+      text-shadow: 0 0 8px rgba(52, 152, 219, 0.35);
+    }
     .btn {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 7px;
       width: 100%;
-      padding: 10px 12px;
-      margin-top: 8px;
+      padding: 12px 14px;
+      margin-top: 10px;
       border: none;
-      border-radius: 22px;
-      font-size: 14px;
+      border-radius: 24px;
+      font-size: 15px;
       font-weight: 600;
       color: #fff;
       cursor: pointer;
@@ -104,6 +125,50 @@
     .btn-purple { background: linear-gradient(135deg, #8e44ad, #9b59b6); box-shadow: 0 4px 16px rgba(142, 68, 173, 0.45); }
     .btn-orange { background: linear-gradient(135deg, #d35400, #e67e22); box-shadow: 0 4px 16px rgba(230, 126, 34, 0.4); }
     .btn-green { background: linear-gradient(135deg, #1e8449, #27ae60); box-shadow: 0 4px 16px rgba(39, 174, 96, 0.4); }
+    .btn-blue { background: linear-gradient(135deg, #2471a3, #3498db); box-shadow: 0 4px 16px rgba(52, 152, 219, 0.4); }
+
+    .eq-wrap {
+      top: 56px;
+      right: 14px;
+      left: auto;
+      width: min(292px, 50vw);
+      pointer-events: none;
+    }
+
+    .eq-panel {
+      padding: 16px 18px;
+      background: rgba(10, 16, 28, 0.88);
+      border: 1px solid rgba(120, 150, 200, 0.22);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    }
+    .eq-panel-title {
+      font-size: 14px;
+      color: #7ec8ff;
+      font-weight: 600;
+      margin-bottom: 12px;
+      letter-spacing: 0.08em;
+    }
+    .eq-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .eq-line {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.55;
+      color: #e8eef8;
+      letter-spacing: 0.04em;
+      animation: eqFadeIn 0.35s ease forwards;
+    }
+    .eq-line.main { color: #fff; font-size: 23px; }
+    .eq-line.sum { color: #7bed9f; }
+    @keyframes eqFadeIn {
+      from { opacity: 0; transform: translateX(10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
 
     .hint-top {
       top: 14px;
@@ -196,7 +261,7 @@
   <div class="overlay panel">
     <div class="field">
       <span class="icon icon-a">✎</span>
-      <label>两位数</label>
+      <label>多位数</label>
       <span class="val" id="valA" data-target="a">12</span>
     </div>
     <div class="field">
@@ -206,12 +271,23 @@
     </div>
     <div class="btn-row">
       <button type="button" class="btn btn-purple" id="btnGen">⊕ 生成 &amp; 重置</button>
-      <button type="button" class="btn btn-orange" id="btnSplit">⇄ 拆 (Split)</button>
-      <button type="button" class="btn btn-green" id="btnCombine">⊕ 合 (Combine)</button>
+      <div class="btn-flow">
+        <button type="button" class="btn btn-orange" id="btnSplit">⇄ 拆 (Split)</button>
+        <span class="flow-arrow" aria-hidden="true">↓</span>
+        <button type="button" class="btn btn-blue" id="btnCalc">∑ 算 (Calc)</button>
+        <span class="flow-arrow" aria-hidden="true">↓</span>
+        <button type="button" class="btn btn-green" id="btnCombine">⊕ 合 (Combine)</button>
+      </div>
     </div>
   </div>
 
   <div class="overlay hint-top" id="hintTop"></div>
+  <div class="overlay eq-wrap">
+    <div class="eq-panel" id="eqPanel">
+      <div class="eq-panel-title">算式</div>
+      <div class="eq-lines" id="eqLines"></div>
+    </div>
+  </div>
   <div class="overlay hint-bottom" id="hintBottom"></div>
   <div class="overlay hint-br" id="hintBr"></div>
 
@@ -238,15 +314,20 @@
     const ONES_COLOR = 0x3498db;
     const BLOCK = 0.42;
     const GAP = 0.46;
+    const COL_STEP = 1.05;
+    const PLACES = [1, 10, 100, 1000];
+    const MAX_NUM_A = 9999;
 
     let numA = 12, numB = 3;
-    let mode = "multiply"; // decompose | multiply | combine
+    let mode = "multiply"; // multiply | decompose | calculate | combine
+    let eqStep = 0; // 0 空 | 1 总式 | 2 +按位乘 | 3 +相加
     let blocks = [];
     let keypadTarget = null;
     let keypadBuffer = "";
 
     const wrap = document.getElementById("canvas-wrap");
     const hintTop = document.getElementById("hintTop");
+    const eqLinesEl = document.getElementById("eqLines");
     const hintBottom = document.getElementById("hintBottom");
     const hintBr = document.getElementById("hintBr");
     const valA = document.getElementById("valA");
@@ -302,12 +383,135 @@
     floor.receiveShadow = true;
     scene.add(floor);
 
+    function getPlaceDigits(n) {
+      return PLACES.map((place) => ({
+        place,
+        digit: Math.floor(n / place) % 10
+      }));
+    }
+
+    function placeUnitWidth(place) {
+      if (place === 100) return 10 * COL_STEP;
+      if (place === 1000) return 100 * COL_STEP;
+      return COL_STEP;
+    }
+
+    function placeGroupWidth(place, count) {
+      return count * placeUnitWidth(place);
+    }
+
+    function decomposeExpr(n) {
+      return getPlaceDigits(n)
+        .filter((p) => p.digit > 0)
+        .map((p) => String(p.digit * p.place))
+        .reverse()
+        .join(" + ");
+    }
+
+    function splitDescFromPlaces(places) {
+      return [...places]
+        .reverse()
+        .filter((p) => p.digit > 0)
+        .map((p) => (p.place === 1 ? `${p.digit} 个一` : `${p.digit} 个整${p.place}`))
+        .join(" + ");
+    }
+
+    function getEquationPartials(n, b) {
+      return getPlaceDigits(n)
+        .filter((p) => p.digit > 0)
+        .map((p) => ({
+          term: p.digit * p.place,
+          value: p.digit * p.place * b
+        }));
+    }
+
+    function getEquationLineItems(step) {
+      const product = numA * numB;
+      const partials = getEquationPartials(numA, numB);
+      const items = [];
+      if (step >= 1) items.push({ cls: "main", text: `${numA}×${numB}=${product}` });
+      if (step >= 2) {
+        for (const p of partials) items.push({ cls: "partial", text: `${p.term}×${numB}=${p.value}` });
+      }
+      if (step >= 3) {
+        const sumExpr = [...partials].reverse().map((p) => p.value).join("+");
+        items.push({ cls: "sum", text: `${sumExpr}=${product}` });
+      }
+      return items;
+    }
+
+    function renderEqPanel() {
+      const items = getEquationLineItems(eqStep);
+      eqLinesEl.innerHTML = items
+        .map((item) => `<div class="eq-line ${item.cls}">${item.text}</div>`)
+        .join("");
+    }
+
+    function setEqStep(step) {
+      const prevStep = eqStep;
+      eqStep = step;
+      if (step < prevStep) {
+        renderEqPanel();
+        return;
+      }
+      renderEqPanel();
+    }
+
+    /** 合模式左下角公式 */
+    function formatCombineFormula(n, b) {
+      const product = n * b;
+      const partials = getEquationPartials(n, b);
+      const lines = [`${n}×${b}=${product}`];
+      for (const p of partials) lines.push(`${p.term}×${b}=${p.value}`);
+      const sumExpr = [...partials].reverse().map((p) => p.value).join("+");
+      lines.push(`${sumExpr}=${product}`);
+      return lines.join("<br>");
+    }
+
+    function groupInnerWidth(places) {
+      let w = 0;
+      for (const { place, digit } of [...places].reverse()) {
+        if (digit === 0) continue;
+        w += place === 1 ? COL_STEP : placeGroupWidth(place, digit);
+      }
+      return w;
+    }
+
+    /** 绘制一个 place 位值单元（整10/整100/整1000），返回占用宽度 */
+    function drawPlaceUnit(baseX, z, place, color) {
+      if (place === 10) {
+        for (let y = 0; y < 10; y++) addBlock(baseX, y, z, color);
+      } else if (place === 100) {
+        for (let cx = 0; cx < 10; cx++) {
+          for (let y = 0; y < 10; y++) addBlock(baseX + cx * COL_STEP, y, z, color);
+        }
+      } else if (place === 1000) {
+        for (let flat = 0; flat < 10; flat++) {
+          const flatX = baseX + flat * 10 * COL_STEP;
+          for (let cx = 0; cx < 10; cx++) {
+            for (let y = 0; y < 10; y++) addBlock(flatX + cx * COL_STEP, y, z, color);
+          }
+        }
+      }
+      return placeUnitWidth(place);
+    }
+
+    function drawPlaceGroup(baseX, z, place, digit, color) {
+      let w = 0;
+      for (let i = 0; i < digit; i++) {
+        drawPlaceUnit(baseX + w, z, place, color);
+        w += placeUnitWidth(place);
+      }
+      return w;
+    }
+
     function parseInputs() {
-      numA = Math.min(99, Math.max(10, parseInt(valA.textContent, 10) || 12));
+      numA = Math.min(MAX_NUM_A, Math.max(1, parseInt(valA.textContent, 10) || 12));
       numB = Math.min(9, Math.max(1, parseInt(valB.textContent, 10) || 1));
       valA.textContent = numA;
       valB.textContent = numB;
-      return { tens: Math.floor(numA / 10), ones: numA % 10, product: numA * numB };
+      const places = getPlaceDigits(numA);
+      return { places, product: numA * numB };
     }
 
     function clearBlocks() {
@@ -348,6 +552,10 @@
     }
 
     function animateIn() {
+      if (blocks.length > 400) {
+        blocks.forEach((b) => b.mesh.scale.setScalar(1));
+        return;
+      }
       blocks.forEach((b, i) => {
         b.mesh.scale.set(0.01, 0.01, 0.01);
         const targetY = b.mesh.position.y;
@@ -368,29 +576,28 @@
       });
     }
 
-  /** 拆：每组按十位拆成多列「整10」+ 个位列，组内同色 */
+  /** 拆：按各位数拆成整1/整10/整100/整1000 列，组内同色 */
     function buildDecompose() {
       clearBlocks();
-      const { tens, ones } = parseInputs();
+      const { places } = parseInputs();
       const groups = numB;
-      const colStep = 1.05;
-      const hasOnes = ones > 0;
-      const groupInnerW = tens * colStep + (hasOnes ? colStep : 0);
+      const groupInnerW = groupInnerWidth(places);
       const groupW = groupInnerW + 1.0;
       const startX = -((groups - 1) * groupW) / 2;
 
       for (let g = 0; g < groups; g++) {
         const gx = startX + g * groupW;
         const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
-        const leftEdge = gx - groupInnerW / 2 + colStep / 2;
+        let x = gx - groupInnerW / 2;
 
-        for (let t = 0; t < tens; t++) {
-          const tx = leftEdge + t * colStep;
-          for (let y = 0; y < 10; y++) addBlock(tx, y, 0, colColor);
-        }
-        if (hasOnes) {
-          const ox = leftEdge + tens * colStep;
-          for (let y = 0; y < ones; y++) addBlock(ox, y, 0, colColor);
+        for (const { place, digit } of [...places].reverse()) {
+          if (digit === 0) continue;
+          if (place === 1) {
+            for (let y = 0; y < digit; y++) addBlock(x + COL_STEP / 2, y, 0, colColor);
+            x += COL_STEP;
+          } else {
+            x += drawPlaceGroup(x, 0, place, digit, colColor);
+          }
         }
       }
 
@@ -417,25 +624,45 @@
       updateHints();
     }
 
-  /** 合：十位合并（numB×十位 列，每列10高）+ 个位合并 */
+  /** 合/算：各位乘积合并（合模式时整位与个位横向更紧凑） */
     function buildCombine() {
       clearBlocks();
-      const { tens, ones } = parseInputs();
-      const tenCols = tens * numB;
-      const startX = -(tenCols * 1.05) / 2;
+      const { places } = parseInputs();
+      const tight = mode === "combine";
+      const segGap = (nextPlace) => (tight ? 0.15 : nextPlace === 1 ? 0.6 : 0.4);
+      const activePlaces = [...places].reverse().filter((p) => p.digit > 0);
 
-      for (let c = 0; c < tenCols; c++) {
-        for (let y = 0; y < 10; y++) {
-          addBlock(startX + c * 1.05, y, -0.4, GROUP_COLORS[c % GROUP_COLORS.length]);
-        }
-      }
+      let totalW = 0;
+      activePlaces.forEach((p, i) => {
+        if (p.place === 1) totalW += numB * COL_STEP;
+        else totalW += placeGroupWidth(p.place, p.digit * numB);
+        const next = activePlaces[i + 1];
+        if (next) totalW += segGap(next.place);
+      });
 
-      const ox = startX + tenCols * 1.05 + 1.8;
-      for (let c = 0; c < numB; c++) {
-        for (let y = 0; y < ones; y++) {
-          addBlock(ox + c * 0.95, y, 0.6, GROUP_COLORS[(c + 1) % GROUP_COLORS.length]);
+      let x = -totalW / 2;
+      activePlaces.forEach((p, i) => {
+        const { place, digit } = p;
+        if (place === 1) {
+          for (let g = 0; g < numB; g++) {
+            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
+            for (let y = 0; y < digit; y++) {
+              addBlock(x + g * COL_STEP + COL_STEP / 2, y, 0.6, colColor);
+            }
+          }
+          x += numB * COL_STEP;
+        } else {
+          for (let g = 0; g < numB; g++) {
+            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
+            for (let d = 0; d < digit; d++) {
+              drawPlaceUnit(x, -0.4, place, colColor);
+              x += placeUnitWidth(place);
+            }
+          }
         }
-      }
+        const next = activePlaces[i + 1];
+        if (next) x += segGap(next.place);
+      });
 
       centerGroup();
       animateIn();
@@ -451,32 +678,33 @@
     }
 
     function updateHints() {
-      const { tens, ones, product } = parseInputs();
-      const tensVal = tens * 10;
-      const dist = `(${tensVal} + ${ones}) × ${numB} = ${tensVal * numB} + ${ones * numB}`;
-      const splitDesc = ones > 0
-        ? `${tens} 个整10列 + ${ones} 个一列`
-        : `${tens} 个整10列`;
+      const { places, product } = parseInputs();
+      const expr = decomposeExpr(numA);
+      const splitDesc = splitDescFromPlaces(places);
 
       if (mode === "decompose") {
         hintTop.textContent = `拆模式：每组 ${splitDesc}，组内颜色相同`;
-        hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}<br>${numA} = ${tensVal} + ${ones}，共 ${numB} 组`;
-        hintBr.textContent = "当前模式：拆模式。整10列数 = 十位数字。";
+        hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}<br>${numA} = ${expr}，共 ${numB} 组`;
+        hintBr.textContent = "当前模式：拆模式。整10/100/1000 列数 = 对应位数字。";
+      } else if (mode === "calculate") {
+        hintTop.textContent = `算模式：按位相乘再相加`;
+        hintBottom.innerHTML = `<strong>分步计算：</strong><br>${formatCombineFormula(numA, numB)}`;
+        hintBr.textContent = "当前模式：算模式。积木布局与「合」相同，显示分步算式。";
       } else if (mode === "multiply") {
         hintTop.textContent = `分模式：${numB} 组，每组 ${numA} 个方块一列，组内颜色相同`;
         hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}<br>点击「拆」将每组拆成 ${splitDesc}`;
-        hintBr.textContent = `当前模式：分模式。点击「拆」按十位拆成 ${tens} 列整10与个位。`;
+        hintBr.textContent = "当前模式：分模式。点击「拆」按各位数拆分。";
       } else {
-        hintTop.textContent = `合模式：${tens * 10}个${numB}（颜色代表），${ones * numB}个1（颜色代表）`;
-        hintBottom.innerHTML = `<strong>乘积模式：</strong> ${numA} × ${numB} = ${product}<br>(${tens * 10} × ${numB}) = ${tens * 10 * numB}，(${ones} × ${numB}) = ${ones * numB}，${tens * 10 * numB} + ${ones * numB} = ${product}`;
-        hintBr.textContent = "当前模式：合模式。已合并十位与个位的乘积结果。";
+        hintTop.textContent = `合模式：各位乘积合并（${splitDesc}）× ${numB}`;
+        hintBottom.innerHTML = `<strong>乘积模式：</strong><br>${formatCombineFormula(numA, numB)}`;
+        hintBr.textContent = "当前模式：合模式。已合并各位乘积结果。";
       }
     }
 
     function rebuild() {
       blockGroup.position.set(0, 0, 0);
       if (mode === "decompose") buildDecompose();
-      else if (mode === "combine") buildCombine();
+      else if (mode === "combine" || mode === "calculate") buildCombine();
       else buildMultiply();
     }
 
@@ -502,7 +730,7 @@
       btn.className = "key";
       btn.textContent = k;
       btn.addEventListener("click", () => {
-        const maxLen = keypadTarget === "a" ? 2 : 1;
+        const maxLen = keypadTarget === "a" ? 4 : 1;
         if (keypadTarget === "b" && k === "00") return;
         if (k === "00" && keypadBuffer.length > 0) return;
         if (keypadBuffer.length >= maxLen) return;
@@ -587,7 +815,7 @@
       let v = parseInt(keypadBuffer, 10);
       if (isNaN(v) || keypadBuffer === "") v = keypadTarget === "a" ? 12 : 3;
       if (keypadTarget === "a") {
-        v = Math.min(99, Math.max(10, v));
+        v = Math.min(MAX_NUM_A, Math.max(1, v));
         numA = v;
         valA.textContent = v;
         valA.classList.remove("empty");
@@ -607,6 +835,7 @@
     document.getElementById("btnGen").addEventListener("click", () => {
       parseInputs();
       mode = "multiply";
+      setEqStep(1);
       rebuild();
     });
     document.getElementById("btnSplit").addEventListener("click", () => {
@@ -614,9 +843,16 @@
       mode = "decompose";
       rebuild();
     });
+    document.getElementById("btnCalc").addEventListener("click", () => {
+      parseInputs();
+      mode = "calculate";
+      setEqStep(Math.max(eqStep, 2));
+      buildCombine();
+    });
     document.getElementById("btnCombine").addEventListener("click", () => {
       parseInputs();
       mode = "combine";
+      setEqStep(3);
       rebuild();
     });
 
@@ -624,6 +860,7 @@
     resize();
     parseInputs();
     mode = "multiply";
+    setEqStep(1);
     rebuild();
     loop();
   </script>
