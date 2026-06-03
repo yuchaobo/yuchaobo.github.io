@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>24 × 2 竖式</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: "KaiTi", "STKaiti", "楷体", serif;
+      background: linear-gradient(160deg, #f0f4ff 0%, #e8f5e9 100%);
+      color: #1a237e;
+      padding: 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: normal;
+      margin-bottom: 1.5rem;
+      color: #3949ab;
+      letter-spacing: 0.1em;
+    }
+
+    .main {
+      display: flex;
+      align-items: flex-start;
+      gap: 2.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .vertical-multiply {
+      background: #fff;
+      padding: 2.5rem 3rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(26, 35, 126, 0.08);
+    }
+
+    .sheet {
+      position: relative;
+      cursor: crosshair;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .digits-layer {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.15rem;
+      pointer-events: none;
+    }
+
+    .digits-layer > .row:first-child {
+      margin-bottom: 0.35rem;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 5.5rem;
+      font-size: 3.5rem;
+      line-height: 1.2;
+      letter-spacing: 0.35em;
+    }
+
+    .row .digit {
+      width: 1.1em;
+      text-align: center;
+    }
+
+    .row .operator {
+      width: 1.2em;
+      text-align: center;
+      margin-right: 0.1em;
+      color: #c62828;
+      letter-spacing: 0;
+    }
+
+    .row .placeholder {
+      width: 1.1em;
+    }
+
+    .divider {
+      width: 100%;
+      height: 3px;
+      background: #1a237e;
+      margin: 0.5rem 0 0.75rem;
+      border-radius: 2px;
+    }
+
+    .result-row {
+      min-height: 4.2rem;
+      letter-spacing: 0;
+    }
+
+    .result-row .digit-slot {
+      width: 1.1em;
+      height: 1.1em;
+      min-height: 4.2rem;
+    }
+
+    #writeCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    .equations {
+      min-width: 200px;
+      padding: 1.5rem 1.75rem;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(26, 35, 126, 0.08);
+      font-size: 1.75rem;
+      line-height: 2;
+      color: #1565c0;
+    }
+
+    .equations:empty {
+      display: none;
+    }
+
+    .equations .eq {
+      opacity: 0;
+      transform: translateX(-8px);
+      animation: fadeIn 0.4s ease forwards;
+    }
+
+    .equations .eq:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    .equations .eq:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+
+    @keyframes fadeIn {
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .clear-btn {
+      margin-top: 0.75rem;
+      font-family: system-ui, sans-serif;
+      font-size: 0.8rem;
+      color: #78909c;
+      background: none;
+      border: 1px solid #cfd8dc;
+      border-radius: 6px;
+      padding: 0.35rem 0.75rem;
+      cursor: pointer;
+    }
+
+    .clear-btn:hover {
+      color: #3949ab;
+      border-color: #3949ab;
+    }
+  </style>
+</head>
+<body>
+  <h1>竖式乘法</h1>
+
+  <div class="main">
+    <div class="vertical-multiply">
+      <div class="sheet" id="sheet">
+        <div class="digits-layer" id="digitsLayer">
+          <div class="row">
+            <span class="placeholder"></span>
+            <span class="digit" data-col="tens">2</span>
+            <span class="digit" data-col="ones">4</span>
+          </div>
+          <div class="row">
+            <span class="operator">×</span>
+            <span class="placeholder"></span>
+            <span class="digit" data-col="ones">2</span>
+          </div>
+          <div class="divider" id="divider"></div>
+          <div class="row result-row">
+            <span class="placeholder"></span>
+            <span class="digit-slot" data-col="tens" id="slotTens"></span>
+            <span class="digit-slot" data-col="ones" id="slotOnes"></span>
+          </div>
+        </div>
+        <canvas id="writeCanvas" aria-label="竖式书写区域"></canvas>
+      </div>
+      <button type="button" class="clear-btn" id="resetBtn">清除重写</button>
+    </div>
+
+    <aside class="equations" id="equations" aria-live="polite"></aside>
+  </div>
+
+  <script>
+    const sheet = document.getElementById("sheet");
+    const canvas = document.getElementById("writeCanvas");
+    const divider = document.getElementById("divider");
+    const slotTens = document.getElementById("slotTens");
+    const slotOnes = document.getElementById("slotOnes");
+    const equationsEl = document.getElementById("equations");
+    const resetBtn = document.getElementById("resetBtn");
+
+    const ctx = canvas.getContext("2d");
+    let drawing = false;
+    let points = [];
+    let onesWrites = 0;
+    let tensWrites = 0;
+    let onesShown = false;
+    let tensShown = false;
+
+    const MIN_STROKE_LEN = 18;
+    const MIN_POINTS = 4;
+
+    function resizeCanvas() {
+      const rect = sheet.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + "px";
+      canvas.style.height = rect.height + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "#1a237e";
+    }
+
+    function getZones() {
+      const sheetRect = sheet.getBoundingClientRect();
+      const divRect = divider.getBoundingClientRect();
+      const tensRect = slotTens.getBoundingClientRect();
+      const onesRect = slotOnes.getBoundingClientRect();
+      const resultTop = divRect.bottom - sheetRect.top;
+
+      return {
+        resultTop,
+        tens: {
+          left: tensRect.left - sheetRect.left,
+          right: tensRect.right - sheetRect.left
+        },
+        ones: {
+          left: onesRect.left - sheetRect.left,
+          right: onesRect.right - sheetRect.left
+        }
+      };
+    }
+
+    function strokeLength(pts) {
+      let len = 0;
+      for (let i = 1; i < pts.length; i++) {
+        len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      }
+      return len;
+    }
+
+    function strokeZone(pts, zones) {
+      if (pts.length < MIN_POINTS || strokeLength(pts) < MIN_STROKE_LEN) return null;
+
+      let sumX = 0;
+      let sumY = 0;
+      let belowLine = 0;
+
+      for (const p of pts) {
+        sumX += p.x;
+        sumY += p.y;
+        if (p.y >= zones.resultTop) belowLine++;
+      }
+
+      if (belowLine < pts.length * 0.5) return null;
+
+      const cx = sumX / pts.length;
+      const cy = sumY / pts.length;
+      if (cy < zones.resultTop) return null;
+
+      if (cx >= zones.ones.left && cx <= zones.ones.right) return "ones";
+      if (cx >= zones.tens.left && cx <= zones.tens.right) return "tens";
+      return null;
+    }
+
+    function showOnesEquation() {
+      if (onesShown) return;
+      onesShown = true;
+      equationsEl.innerHTML = '<div class="eq">4×2=8</div>';
+    }
+
+    function showTensEquations() {
+      if (tensShown) return;
+      tensShown = true;
+      equationsEl.innerHTML =
+        '<div class="eq">4×2=8</div>' +
+        '<div class="eq">20×2=40</div>' +
+        '<div class="eq">40+8=48</div>';
+    }
+
+    function onStrokeEnd(pts) {
+      const zones = getZones();
+      const zone = strokeZone(pts, zones);
+      if (!zone) return;
+
+      if (zone === "ones") {
+        onesWrites++;
+        if (onesWrites >= 1) showOnesEquation();
+      } else if (zone === "tens") {
+        tensWrites++;
+        if (tensWrites >= 2) showTensEquations();
+      }
+    }
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    }
+
+    function start(e) {
+      e.preventDefault();
+      drawing = true;
+      points = [getPos(e)];
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+    }
+
+    function move(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      const p = getPos(e);
+      points.push(p);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
+
+    function end(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      drawing = false;
+      onStrokeEnd(points);
+      points = [];
+    }
+
+    function reset() {
+      onesWrites = 0;
+      tensWrites = 0;
+      onesShown = false;
+      tensShown = false;
+      equationsEl.innerHTML = "";
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    canvas.addEventListener("mousedown", start);
+    canvas.addEventListener("mousemove", move);
+    canvas.addEventListener("mouseup", end);
+    canvas.addEventListener("mouseleave", () => {
+      if (drawing) end({ preventDefault: () => {} });
+    });
+
+    canvas.addEventListener("touchstart", start, { passive: false });
+    canvas.addEventListener("touchmove", move, { passive: false });
+    canvas.addEventListener("touchend", end, { passive: false });
+
+    resetBtn.addEventListener("click", reset);
+    window.addEventListener("resize", resizeCanvas);
+
+    resizeCanvas();
+  </script>
+</body>
+</html>
