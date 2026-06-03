@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>乘法积木 · 3D 可视化</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      background: #050a14;
+      color: #e8eef8;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #canvas-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+    #canvas-wrap canvas { display: block; width: 100%; height: 100%; }
+
+    .overlay { position: fixed; z-index: 10; pointer-events: none; }
+    .overlay * { pointer-events: auto; }
+
+    .panel {
+      top: 14px;
+      left: 14px;
+      width: min(220px, 42vw);
+      padding: 12px;
+      background: rgba(18, 24, 38, 0.82);
+      border: 1px solid rgba(120, 150, 200, 0.22);
+      border-radius: 14px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .field .icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .icon-a { background: rgba(231, 76, 60, 0.35); color: #ff8a80; }
+    .icon-b { background: rgba(155, 89, 182, 0.35); color: #ce93d8; }
+    .field label { flex: 1; opacity: 0.92; white-space: nowrap; }
+    .field .val {
+      min-width: 44px;
+      min-height: 28px;
+      padding: 5px 10px;
+      text-align: center;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field .val.empty {
+      color: rgba(232, 238, 248, 0.35);
+    }
+    .field .val.empty::after {
+      content: "—";
+    }
+    .field .val:hover, .field .val.active {
+      border-color: rgba(100, 180, 255, 0.65);
+      box-shadow: 0 0 12px rgba(52, 152, 219, 0.35);
+    }
+
+    .btn-row { margin-top: 6px; }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 8px;
+      border: none;
+      border-radius: 22px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      transition: transform 0.15s, filter 0.15s, box-shadow 0.15s;
+      letter-spacing: 0.02em;
+    }
+    .btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); filter: brightness(0.95); }
+    .btn-purple { background: linear-gradient(135deg, #8e44ad, #9b59b6); box-shadow: 0 4px 16px rgba(142, 68, 173, 0.45); }
+    .btn-orange { background: linear-gradient(135deg, #d35400, #e67e22); box-shadow: 0 4px 16px rgba(230, 126, 34, 0.4); }
+    .btn-green { background: linear-gradient(135deg, #1e8449, #27ae60); box-shadow: 0 4px 16px rgba(39, 174, 96, 0.4); }
+
+    .hint-top {
+      top: 14px;
+      right: 14px;
+      left: auto;
+      max-width: min(280px, 52vw);
+      font-size: 12px;
+      line-height: 1.55;
+      color: rgba(232, 238, 248, 0.88);
+      text-align: right;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+      pointer-events: none;
+    }
+
+    .hint-bottom {
+      bottom: 14px;
+      left: 14px;
+      max-width: min(340px, 70vw);
+      padding: 10px 14px;
+      background: rgba(10, 16, 28, 0.72);
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 12px;
+      line-height: 1.65;
+      pointer-events: none;
+    }
+    .hint-bottom strong { color: #7ec8ff; font-weight: 600; }
+
+    .hint-br {
+      bottom: 14px;
+      right: 14px;
+      left: auto;
+      max-width: min(260px, 48vw);
+      font-size: 11px;
+      line-height: 1.55;
+      color: rgba(200, 210, 230, 0.75);
+      text-align: right;
+      pointer-events: none;
+    }
+
+    /* 数字键盘 */
+    .keypad-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.35);
+    }
+    .keypad-wrap.show { display: flex; }
+    .keypad {
+      width: min(280px, 88vw);
+      padding: 16px;
+      background: rgba(28, 34, 48, 0.95);
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+    }
+    .keypad-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .key {
+      aspect-ratio: 1;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+      color: #e8eef8;
+      font-size: 20px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .key:hover { background: rgba(255, 255, 255, 0.16); }
+    .key.highlight {
+      background: rgba(52, 152, 219, 0.45);
+      box-shadow: 0 0 16px rgba(52, 152, 219, 0.6);
+    }
+    .key-del { background: rgba(231, 76, 60, 0.75); font-size: 16px; }
+    .key-close { background: rgba(120, 130, 150, 0.5); }
+    .key-ok { background: rgba(39, 174, 96, 0.85); font-size: 18px; }
+    .key-wide { grid-column: span 1; }
+  </style>
+</head>
+<body>
+  <div id="canvas-wrap"></div>
+
+  <div class="overlay panel">
+    <div class="field">
+      <span class="icon icon-a">✎</span>
+      <label>两位数</label>
+      <span class="val" id="valA" data-target="a">12</span>
+    </div>
+    <div class="field">
+      <span class="icon icon-b">×</span>
+      <label>一位数</label>
+      <span class="val" id="valB" data-target="b">3</span>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn btn-purple" id="btnGen">⊕ 生成 &amp; 重置</button>
+      <button type="button" class="btn btn-orange" id="btnSplit">⇄ 拆 (Split)</button>
+      <button type="button" class="btn btn-green" id="btnCombine">⊕ 合 (Combine)</button>
+    </div>
+  </div>
+
+  <div class="overlay hint-top" id="hintTop"></div>
+  <div class="overlay hint-bottom" id="hintBottom"></div>
+  <div class="overlay hint-br" id="hintBr"></div>
+
+  <div class="keypad-wrap" id="keypadWrap">
+    <div class="keypad">
+      <div class="keypad-grid" id="keypadGrid"></div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    const GROUP_COLORS = [0xe67e22, 0xf1c40f, 0x3498db, 0x9b59b6, 0x1abc9c, 0xe74c3c, 0x2ecc71, 0x95a5a6, 0xd35400];
+    const TENS_COLOR = 0xe67e22;
+    const ONES_COLOR = 0x3498db;
+    const BLOCK = 0.42;
+    const GAP = 0.46;
+
+    let numA = 12, numB = 3;
+    let mode = "multiply"; // decompose | multiply | combine
+    let blocks = [];
+    let keypadTarget = null;
+    let keypadBuffer = "";
+
+    const wrap = document.getElementById("canvas-wrap");
+    const hintTop = document.getElementById("hintTop");
+    const hintBottom = document.getElementById("hintBottom");
+    const hintBr = document.getElementById("hintBr");
+    const valA = document.getElementById("valA");
+    const valB = document.getElementById("valB");
+    const keypadWrap = document.getElementById("keypadWrap");
+    const keypadGrid = document.getElementById("keypadGrid");
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050a14);
+    scene.fog = new THREE.Fog(0x050a14, 18, 42);
+
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+    camera.position.set(6, 7.5, 11);
+    camera.lookAt(0, 2, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    wrap.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.target.set(0, 2.2, 0);
+    controls.minDistance = 5;
+    controls.maxDistance = 22;
+    controls.maxPolarAngle = Math.PI / 2.05;
+    controls.enablePan = false;
+
+    scene.add(new THREE.AmbientLight(0x4466aa, 0.55));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+    dir.position.set(8, 14, 6);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(1024, 1024);
+    scene.add(dir);
+    const rim = new THREE.DirectionalLight(0x88bbff, 0.35);
+    rim.position.set(-6, 4, -8);
+    scene.add(rim);
+
+    const blockGroup = new THREE.Group();
+    scene.add(blockGroup);
+
+    const grid = new THREE.GridHelper(24, 24, 0x2a5a8a, 0x152535);
+    grid.position.y = 0.01;
+    scene.add(grid);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(24, 24),
+      new THREE.MeshStandardMaterial({ color: 0x081018, transparent: true, opacity: 0.85 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    function parseInputs() {
+      numA = Math.min(99, Math.max(10, parseInt(valA.textContent, 10) || 12));
+      numB = Math.min(9, Math.max(1, parseInt(valB.textContent, 10) || 1));
+      valA.textContent = numA;
+      valB.textContent = numB;
+      return { tens: Math.floor(numA / 10), ones: numA % 10, product: numA * numB };
+    }
+
+    function clearBlocks() {
+      for (const b of blocks) {
+        blockGroup.remove(b.mesh);
+        b.mesh.geometry.dispose();
+        b.mesh.material.dispose();
+      }
+      blocks = [];
+    }
+
+    function makeBlock(color, emissive = 0) {
+      const geo = new THREE.BoxGeometry(BLOCK * 0.92, BLOCK * 0.92, BLOCK * 0.92);
+      const mat = new THREE.MeshStandardMaterial({
+        color,
+        emissive: new THREE.Color(emissive),
+        emissiveIntensity: emissive ? 0.35 : 0,
+        metalness: 0.15,
+        roughness: 0.55
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geo),
+        new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 })
+      );
+      mesh.add(edges);
+      return mesh;
+    }
+
+    function addBlock(x, y, z, color, emissive = 0) {
+      const mesh = makeBlock(color, emissive);
+      mesh.position.set(x * GAP, y * GAP + BLOCK / 2, z * GAP);
+      blockGroup.add(mesh);
+      blocks.push({ mesh, x, y, z, color });
+      return mesh;
+    }
+
+    function animateIn() {
+      blocks.forEach((b, i) => {
+        b.mesh.scale.set(0.01, 0.01, 0.01);
+        const targetY = b.mesh.position.y;
+        b.mesh.position.y = targetY + 2;
+        const delay = i * 18;
+        setTimeout(() => {
+          const start = performance.now();
+          const dur = 380;
+          function tick(now) {
+            const t = Math.min(1, (now - start) / dur);
+            const e = 1 - Math.pow(1 - t, 3);
+            b.mesh.scale.setScalar(0.01 + 0.99 * e);
+            b.mesh.position.y = targetY + 2 * (1 - e);
+            if (t < 1) requestAnimationFrame(tick);
+          }
+          requestAnimationFrame(tick);
+        }, delay);
+      });
+    }
+
+  /** 拆：每组按十位拆成多列「整10」+ 个位列，组内同色 */
+    function buildDecompose() {
+      clearBlocks();
+      const { tens, ones } = parseInputs();
+      const groups = numB;
+      const colStep = 1.05;
+      const hasOnes = ones > 0;
+      const groupInnerW = tens * colStep + (hasOnes ? colStep : 0);
+      const groupW = groupInnerW + 1.0;
+      const startX = -((groups - 1) * groupW) / 2;
+
+      for (let g = 0; g < groups; g++) {
+        const gx = startX + g * groupW;
+        const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
+        const leftEdge = gx - groupInnerW / 2 + colStep / 2;
+
+        for (let t = 0; t < tens; t++) {
+          const tx = leftEdge + t * colStep;
+          for (let y = 0; y < 10; y++) addBlock(tx, y, 0, colColor);
+        }
+        if (hasOnes) {
+          const ox = leftEdge + tens * colStep;
+          for (let y = 0; y < ones; y++) addBlock(ox, y, 0, colColor);
+        }
+      }
+
+      centerGroup();
+      animateIn();
+      updateHints();
+    }
+
+  /** 分模式：乘数份，每组一整列（未拆），组内同色 */
+    function buildMultiply() {
+      clearBlocks();
+      const groups = numB;
+      const groupW = 1.15;
+      const startX = -((groups - 1) * groupW) / 2;
+
+      for (let g = 0; g < groups; g++) {
+        const gx = startX + g * groupW;
+        const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
+        for (let y = 0; y < numA; y++) addBlock(gx, y, 0, colColor);
+      }
+
+      centerGroup();
+      animateIn();
+      updateHints();
+    }
+
+  /** 合：十位合并（numB×十位 列，每列10高）+ 个位合并 */
+    function buildCombine() {
+      clearBlocks();
+      const { tens, ones } = parseInputs();
+      const tenCols = tens * numB;
+      const startX = -(tenCols * 1.05) / 2;
+
+      for (let c = 0; c < tenCols; c++) {
+        for (let y = 0; y < 10; y++) {
+          addBlock(startX + c * 1.05, y, -0.4, GROUP_COLORS[c % GROUP_COLORS.length]);
+        }
+      }
+
+      const ox = startX + tenCols * 1.05 + 1.8;
+      for (let c = 0; c < numB; c++) {
+        for (let y = 0; y < ones; y++) {
+          addBlock(ox + c * 0.95, y, 0.6, GROUP_COLORS[(c + 1) % GROUP_COLORS.length]);
+        }
+      }
+
+      centerGroup();
+      animateIn();
+      updateHints();
+    }
+
+    function centerGroup() {
+      const box = new THREE.Box3().setFromObject(blockGroup);
+      if (box.isEmpty()) return;
+      const c = box.getCenter(new THREE.Vector3());
+      blockGroup.position.x = -c.x;
+      blockGroup.position.z = -c.z;
+    }
+
+    function updateHints() {
+      const { tens, ones, product } = parseInputs();
+      const tensVal = tens * 10;
+      const dist = `(${tensVal} + ${ones}) × ${numB} = ${tensVal * numB} + ${ones * numB}`;
+      const splitDesc = ones > 0
+        ? `${tens} 个整10列 + ${ones} 个一列`
+        : `${tens} 个整10列`;
+
+      if (mode === "decompose") {
+        hintTop.textContent = `拆模式：每组 ${splitDesc}，组内颜色相同`;
+        hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}<br>${numA} = ${tensVal} + ${ones}，共 ${numB} 组`;
+        hintBr.textContent = "当前模式：拆模式。整10列数 = 十位数字。";
+      } else if (mode === "multiply") {
+        hintTop.textContent = `分模式：${numB} 组，每组 ${numA} 个方块一列，组内颜色相同`;
+        hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}<br>点击「拆」将每组拆成 ${splitDesc}`;
+        hintBr.textContent = `当前模式：分模式。点击「拆」按十位拆成 ${tens} 列整10与个位。`;
+      } else {
+        hintTop.textContent = `合模式：${tens * 10}个${numB}（颜色代表），${ones * numB}个1（颜色代表）`;
+        hintBottom.innerHTML = `<strong>乘积模式：</strong> ${numA} × ${numB} = ${product}<br>(${tens * 10} × ${numB}) = ${tens * 10 * numB}，(${ones} × ${numB}) = ${ones * numB}，${tens * 10 * numB} + ${ones * numB} = ${product}`;
+        hintBr.textContent = "当前模式：合模式。已合并十位与个位的乘积结果。";
+      }
+    }
+
+    function rebuild() {
+      blockGroup.position.set(0, 0, 0);
+      if (mode === "decompose") buildDecompose();
+      else if (mode === "combine") buildCombine();
+      else buildMultiply();
+    }
+
+    function resize() {
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function loop() {
+      requestAnimationFrame(loop);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    /* 数字键盘 */
+    const keys = ["1","2","3","4","5","6","7","8","9","00","0"];
+    keys.forEach((k) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "key";
+      btn.textContent = k;
+      btn.addEventListener("click", () => {
+        const maxLen = keypadTarget === "a" ? 2 : 1;
+        if (keypadTarget === "b" && k === "00") return;
+        if (k === "00" && keypadBuffer.length > 0) return;
+        if (keypadBuffer.length >= maxLen) return;
+        if (k === "00" && keypadBuffer.length + 2 > maxLen) return;
+        keypadBuffer += k;
+        syncKeypadDisplay();
+        refreshKeypadHighlight();
+      });
+      keypadGrid.appendChild(btn);
+    });
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "key key-del";
+    delBtn.textContent = "⌫";
+    delBtn.addEventListener("click", () => {
+      keypadBuffer = keypadBuffer.slice(0, -1);
+      syncKeypadDisplay();
+      refreshKeypadHighlight();
+    });
+    keypadGrid.appendChild(delBtn);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "key key-close";
+    closeBtn.textContent = "✕";
+    closeBtn.addEventListener("click", () => closeKeypad(true));
+    keypadGrid.appendChild(closeBtn);
+
+    const okBtn = document.createElement("button");
+    okBtn.type = "button";
+    okBtn.className = "key key-ok";
+    okBtn.textContent = "✓";
+    okBtn.addEventListener("click", confirmKeypad);
+    keypadGrid.appendChild(okBtn);
+
+    function refreshKeypadHighlight() {
+      keypadGrid.querySelectorAll(".key").forEach((el) => el.classList.remove("highlight"));
+    }
+
+    function syncKeypadDisplay() {
+      const setVal = (el, text) => {
+        if (text === "") {
+          el.textContent = "";
+          el.classList.add("empty");
+        } else {
+          el.textContent = text;
+          el.classList.remove("empty");
+        }
+      };
+      if (keypadTarget === "a") setVal(valA, keypadBuffer);
+      else if (keypadTarget === "b") setVal(valB, keypadBuffer);
+    }
+
+    function restorePanelValues() {
+      valA.textContent = numA;
+      valB.textContent = numB;
+      valA.classList.remove("empty");
+      valB.classList.remove("empty");
+    }
+
+    function openKeypad(target) {
+      keypadTarget = target;
+      keypadBuffer = target === "a" ? String(numA) : String(numB);
+      valA.classList.toggle("active", target === "a");
+      valB.classList.toggle("active", target === "b");
+      syncKeypadDisplay();
+      keypadWrap.classList.add("show");
+      refreshKeypadHighlight();
+    }
+
+    function closeKeypad(revert = true) {
+      keypadWrap.classList.remove("show");
+      valA.classList.remove("active");
+      valB.classList.remove("active");
+      if (revert) restorePanelValues();
+      keypadTarget = null;
+      keypadBuffer = "";
+    }
+
+    function confirmKeypad() {
+      let v = parseInt(keypadBuffer, 10);
+      if (isNaN(v) || keypadBuffer === "") v = keypadTarget === "a" ? 12 : 3;
+      if (keypadTarget === "a") {
+        v = Math.min(99, Math.max(10, v));
+        numA = v;
+        valA.textContent = v;
+        valA.classList.remove("empty");
+      } else {
+        v = Math.min(9, Math.max(1, v));
+        numB = v;
+        valB.textContent = v;
+        valB.classList.remove("empty");
+      }
+      closeKeypad(false);
+    }
+
+    valA.addEventListener("click", () => openKeypad("a"));
+    valB.addEventListener("click", () => openKeypad("b"));
+    keypadWrap.addEventListener("click", (e) => { if (e.target === keypadWrap) closeKeypad(true); });
+
+    document.getElementById("btnGen").addEventListener("click", () => {
+      parseInputs();
+      mode = "multiply";
+      rebuild();
+    });
+    document.getElementById("btnSplit").addEventListener("click", () => {
+      parseInputs();
+      mode = "decompose";
+      rebuild();
+    });
+    document.getElementById("btnCombine").addEventListener("click", () => {
+      parseInputs();
+      mode = "combine";
+      rebuild();
+    });
+
+    window.addEventListener("resize", resize);
+    resize();
+    parseInputs();
+    mode = "multiply";
+    rebuild();
+    loop();
+  </script>
+</body>
+</html>
