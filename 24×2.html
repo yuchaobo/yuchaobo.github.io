@@ -62,7 +62,7 @@
     }
 
     .digits-layer > .row:first-child {
-      margin-bottom: 0.35rem;
+      margin-bottom: 0.5rem;
     }
 
     .row {
@@ -148,6 +148,14 @@
       animation-delay: 0.3s;
     }
 
+    .equations .eq:nth-child(4) {
+      animation-delay: 0.45s;
+    }
+
+    .digit-slot[hidden] {
+      display: none;
+    }
+
     @keyframes fadeIn {
       to {
         opacity: 1;
@@ -155,8 +163,14 @@
       }
     }
 
-    .clear-btn {
+    .btn-row {
+      display: flex;
+      gap: 0.5rem;
       margin-top: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .action-btn {
       font-family: system-ui, sans-serif;
       font-size: 0.8rem;
       color: #78909c;
@@ -167,7 +181,12 @@
       cursor: pointer;
     }
 
-    .clear-btn:hover {
+    .action-btn:hover {
+      color: #3949ab;
+      border-color: #3949ab;
+    }
+
+    .action-btn.primary {
       color: #3949ab;
       border-color: #3949ab;
     }
@@ -182,24 +201,28 @@
         <div class="digits-layer" id="digitsLayer">
           <div class="row">
             <span class="placeholder"></span>
-            <span class="digit" data-col="tens">2</span>
-            <span class="digit" data-col="ones">4</span>
+            <span class="digit" id="digitTens" data-col="tens">2</span>
+            <span class="digit" id="digitOnes" data-col="ones">4</span>
           </div>
           <div class="row">
             <span class="operator">×</span>
             <span class="placeholder"></span>
-            <span class="digit" data-col="ones">2</span>
+            <span class="digit" id="multiplier">2</span>
           </div>
           <div class="divider" id="divider"></div>
           <div class="row result-row">
             <span class="placeholder"></span>
+            <span class="digit-slot" data-col="hundreds" id="slotHundreds" hidden></span>
             <span class="digit-slot" data-col="tens" id="slotTens"></span>
             <span class="digit-slot" data-col="ones" id="slotOnes"></span>
           </div>
         </div>
         <canvas id="writeCanvas" aria-label="竖式书写区域"></canvas>
       </div>
-      <button type="button" class="clear-btn" id="resetBtn">清除重写</button>
+      <div class="btn-row">
+        <button type="button" class="action-btn" id="resetBtn">清除重写</button>
+        <button type="button" class="action-btn primary" id="nextBtn">下一题</button>
+      </div>
     </div>
 
     <aside class="equations" id="equations" aria-live="polite"></aside>
@@ -209,21 +232,86 @@
     const sheet = document.getElementById("sheet");
     const canvas = document.getElementById("writeCanvas");
     const divider = document.getElementById("divider");
+    const slotHundreds = document.getElementById("slotHundreds");
     const slotTens = document.getElementById("slotTens");
     const slotOnes = document.getElementById("slotOnes");
     const equationsEl = document.getElementById("equations");
     const resetBtn = document.getElementById("resetBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const digitTens = document.getElementById("digitTens");
+    const digitOnes = document.getElementById("digitOnes");
+    const multiplierEl = document.getElementById("multiplier");
+
+    const problems = [
+      {
+        title: "24 × 2 竖式",
+        tens: "2",
+        ones: "4",
+        multiplier: "2",
+        onesAnswer: "8",
+        tensAnswer: "4",
+        onesEq: "4×2=8",
+        tensEq1: "20×2=40",
+        tensEq2: "40+8=48",
+        hasHundreds: false,
+        tensStrokes: 2
+      },
+      {
+        title: "16 × 3 竖式",
+        nearAboveDigit: "1",
+        tens: "1",
+        ones: "6",
+        multiplier: "3",
+        onesAnswer: "8",
+        tensAnswer: "4",
+        onesEq: "6×3=18",
+        tensEq1: "10×3=30",
+        tensEq2: "30+18=48",
+        hasHundreds: false,
+        tensStrokes: 2
+      },
+      {
+        title: "24 × 9 竖式",
+        tens: "2",
+        ones: "4",
+        multiplier: "9",
+        onesAnswer: "6",
+        tensAnswer: "1",
+        hundredsAnswer: "2",
+        onesEq: "4×9=36",
+        tensEq1: "20×9=180",
+        tensEq2: "180+36=216",
+        hasHundreds: true,
+        tensStrokes: 1,
+        nearAboveDigit: "3"
+      }
+    ];
+
+    let problemIndex = 0;
 
     const ctx = canvas.getContext("2d");
+    const strokes = [];
     let drawing = false;
-    let points = [];
+    let livePoints = [];
     let onesWrites = 0;
     let tensWrites = 0;
+    let hundredsWrites = 0;
     let onesShown = false;
     let tensShown = false;
+    let finalShown = false;
+
+    function currentProblem() {
+      return problems[problemIndex];
+    }
 
     const MIN_STROKE_LEN = 18;
     const MIN_POINTS = 4;
+    const ARROW_MIN_LEN = 25;
+    const NEAR_LINE_ABOVE = 50;
+    const INK = "#1a237e";
+    const ARROW_COLOR = "#c62828";
+    const DIGIT_FONT = 'bold 3.5rem "KaiTi", "STKaiti", "楷体", serif';
+    const NEAR_CARRY_FONT = 'bold 1.75rem "KaiTi", "STKaiti", "楷体", serif';
 
     function resizeCanvas() {
       const rect = sheet.getBoundingClientRect();
@@ -233,10 +321,7 @@
       canvas.style.width = rect.width + "px";
       canvas.style.height = rect.height + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = "#1a237e";
+      redraw();
     }
 
     function getZones() {
@@ -246,7 +331,7 @@
       const onesRect = slotOnes.getBoundingClientRect();
       const resultTop = divRect.bottom - sheetRect.top;
 
-      return {
+      const zones = {
         resultTop,
         tens: {
           left: tensRect.left - sheetRect.left,
@@ -256,6 +341,31 @@
           left: onesRect.left - sheetRect.left,
           right: onesRect.right - sheetRect.left
         }
+      };
+
+      if (!slotHundreds.hidden) {
+        const hRect = slotHundreds.getBoundingClientRect();
+        zones.hundreds = {
+          left: hRect.left - sheetRect.left,
+          right: hRect.right - sheetRect.left
+        };
+      }
+
+      return zones;
+    }
+
+    function getSlotEl(zone) {
+      if (zone === "hundreds") return slotHundreds;
+      if (zone === "tens") return slotTens;
+      return slotOnes;
+    }
+
+    function getSlotCenter(el) {
+      const sheetRect = sheet.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      return {
+        x: (r.left + r.right) / 2 - sheetRect.left,
+        y: (r.top + r.bottom) / 2 - sheetRect.top
       };
     }
 
@@ -267,56 +377,332 @@
       return len;
     }
 
-    function strokeZone(pts, zones) {
-      if (pts.length < MIN_POINTS || strokeLength(pts) < MIN_STROKE_LEN) return null;
+    const digitTemplates = {
+      0: [[0.5, 0.12], [0.72, 0.22], [0.78, 0.5], [0.68, 0.78], [0.5, 0.88], [0.32, 0.78], [0.22, 0.5], [0.28, 0.22], [0.5, 0.12]],
+      1: [[0.5, 0.1], [0.5, 0.9]],
+      2: [[0.22, 0.28], [0.5, 0.12], [0.78, 0.28], [0.78, 0.48], [0.22, 0.88], [0.78, 0.88]],
+      3: [[0.28, 0.18], [0.62, 0.18], [0.72, 0.38], [0.5, 0.5], [0.72, 0.62], [0.62, 0.82], [0.28, 0.82]],
+      4: [[0.62, 0.1], [0.62, 0.55], [0.18, 0.55], [0.18, 0.68], [0.72, 0.68], [0.72, 0.9]],
+      5: [[0.72, 0.15], [0.28, 0.15], [0.28, 0.45], [0.65, 0.45], [0.72, 0.65], [0.55, 0.88], [0.28, 0.82]],
+      6: [[0.65, 0.22], [0.4, 0.18], [0.25, 0.42], [0.28, 0.72], [0.5, 0.88], [0.72, 0.72], [0.72, 0.48], [0.5, 0.42]],
+      7: [[0.25, 0.15], [0.75, 0.15], [0.45, 0.9]],
+      8: [[0.5, 0.1], [0.72, 0.22], [0.75, 0.42], [0.5, 0.5], [0.25, 0.42], [0.28, 0.22], [0.5, 0.1], [0.5, 0.5], [0.32, 0.62], [0.28, 0.82], [0.5, 0.92], [0.72, 0.82], [0.68, 0.62], [0.5, 0.55]],
+      9: [[0.5, 0.15], [0.72, 0.28], [0.72, 0.52], [0.5, 0.58], [0.3, 0.5], [0.32, 0.28], [0.5, 0.15], [0.58, 0.58], [0.55, 0.9]]
+    };
 
-      let sumX = 0;
-      let sumY = 0;
-      let belowLine = 0;
+    const RECOGNIZE_THRESHOLD = 0.4;
 
-      for (const p of pts) {
-        sumX += p.x;
-        sumY += p.y;
-        if (p.y >= zones.resultTop) belowLine++;
+    function resamplePoints(points, count) {
+      if (points.length < 2) return points;
+      const lengths = [0];
+      let total = 0;
+      for (let i = 1; i < points.length; i++) {
+        total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+        lengths.push(total);
       }
+      if (total < 1) return [points[0]];
+      const result = [];
+      for (let i = 0; i < count; i++) {
+        const target = (total * i) / (count - 1 || 1);
+        let j = 1;
+        while (j < lengths.length && lengths[j] < target) j++;
+        const t =
+          lengths[j] === lengths[j - 1]
+            ? 0
+            : (target - lengths[j - 1]) / (lengths[j] - lengths[j - 1]);
+        const p0 = points[j - 1];
+        const p1 = points[Math.min(j, points.length - 1)];
+        result.push({
+          x: p0.x + t * (p1.x - p0.x),
+          y: p0.y + t * (p1.y - p0.y)
+        });
+      }
+      return result;
+    }
 
-      if (belowLine < pts.length * 0.5) return null;
+    function normalizePoints(points) {
+      if (!points.length) return [];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of points) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+      const size = Math.max(maxX - minX, maxY - minY, 1);
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      return points.map((p) => ({
+        x: (p.x - cx) / size + 0.5,
+        y: (p.y - cy) / size + 0.5
+      }));
+    }
 
-      const cx = sumX / pts.length;
-      const cy = sumY / pts.length;
-      if (cy < zones.resultTop) return null;
+    function distanceToTemplate(points, template) {
+      const n = 32;
+      const norm = normalizePoints(points);
+      const sampled = resamplePoints(norm, n);
+      const ref = template.map(([x, y]) => ({ x, y }));
+      const refSampled = resamplePoints(ref, n);
+      let sum = 0;
+      for (let i = 0; i < n; i++) {
+        sum += Math.hypot(sampled[i].x - refSampled[i].x, sampled[i].y - refSampled[i].y);
+      }
+      return sum / n;
+    }
 
+    function recognizeDigit(points) {
+      if (points.length < 8) return null;
+      let best = null;
+      let bestDist = Infinity;
+      for (const [digit, template] of Object.entries(digitTemplates)) {
+        const d = distanceToTemplate(points, template);
+        if (d < bestDist) {
+          bestDist = d;
+          best = digit;
+        }
+      }
+      return bestDist < RECOGNIZE_THRESHOLD ? best : null;
+    }
+
+    function getColumnAtX(cx, zones) {
+      if (zones.hundreds && cx >= zones.hundreds.left && cx <= zones.hundreds.right) {
+        return "hundreds";
+      }
       if (cx >= zones.ones.left && cx <= zones.ones.right) return "ones";
       if (cx >= zones.tens.left && cx <= zones.tens.right) return "tens";
       return null;
     }
 
+    function classifyStroke(pts, zones) {
+      if (pts.length < MIN_POINTS || strokeLength(pts) < MIN_STROKE_LEN) return null;
+
+      let sumX = 0;
+      let sumY = 0;
+      let belowCount = 0;
+
+      for (const p of pts) {
+        sumX += p.x;
+        sumY += p.y;
+        if (p.y >= zones.resultTop) belowCount++;
+      }
+
+      const cx = sumX / pts.length;
+      const cy = sumY / pts.length;
+      const col = getColumnAtX(cx, zones);
+      const mostlyBelow = belowCount >= pts.length * 0.5;
+      const nearAboveLine =
+        cy >= zones.resultTop - NEAR_LINE_ABOVE && cy < zones.resultTop;
+
+      if (col && mostlyBelow) {
+        return { type: "below", zone: col };
+      }
+
+      if (nearAboveLine && !mostlyBelow) {
+        const p = currentProblem();
+        if (p.nearAboveDigit) {
+          return {
+            type: "nearAbove",
+            digit: p.nearAboveDigit,
+            x: cx,
+            y: cy,
+            carry: true
+          };
+        }
+        const digit = recognizeDigit(pts);
+        if (digit) {
+          return { type: "nearAbove", digit, x: cx, y: cy };
+        }
+        return { type: "free", points: pts.slice() };
+      }
+
+      const mostlyAbove = belowCount < pts.length * 0.5;
+      if (mostlyAbove && !nearAboveLine) {
+        const p0 = pts[0];
+        const p1 = pts[pts.length - 1];
+        return {
+          type: "above",
+          x1: p0.x,
+          y1: p0.y,
+          x2: p1.x,
+          y2: p1.y,
+          len: strokeLength(pts)
+        };
+      }
+
+      return null;
+    }
+
+    function drawPath(pts, color, width) {
+      if (pts.length < 2) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
+
+    function drawArrow(stroke) {
+      const { x1, y1, x2, y2, len } = stroke;
+      const withHead = len >= ARROW_MIN_LEN;
+      ctx.strokeStyle = ARROW_COLOR;
+      ctx.fillStyle = ARROW_COLOR;
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      if (!withHead) return;
+
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      const headLen = 14;
+      const a1 = angle - Math.PI / 7;
+      const a2 = angle + Math.PI / 7;
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - headLen * Math.cos(a1), y2 - headLen * Math.sin(a1));
+      ctx.lineTo(x2 - headLen * Math.cos(a2), y2 - headLen * Math.sin(a2));
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawCorrectedDigit(stroke) {
+      const { x, y } = getSlotCenter(getSlotEl(stroke.zone));
+      drawDigitAt(stroke.digit, x, y + 2);
+    }
+
+    function drawDigitAt(digit, x, y) {
+      ctx.font = DIGIT_FONT;
+      ctx.fillStyle = INK;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(digit, x, y);
+    }
+
+    function drawNearAboveDigit(stroke) {
+      if (stroke.carry) {
+        ctx.font = NEAR_CARRY_FONT;
+        ctx.fillStyle = ARROW_COLOR;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(stroke.digit, stroke.x, stroke.y);
+        return;
+      }
+      drawDigitAt(stroke.digit, stroke.x, stroke.y);
+    }
+
+    function redraw() {
+      const w = canvas.width / (window.devicePixelRatio || 1);
+      const h = canvas.height / (window.devicePixelRatio || 1);
+      ctx.clearRect(0, 0, w, h);
+
+      for (const s of strokes) {
+        if (s.type === "above") drawArrow(s);
+        else if (s.type === "digit") drawCorrectedDigit(s);
+        else if (s.type === "nearAbove") drawNearAboveDigit(s);
+        else if (s.type === "tensPending" || s.type === "free") drawPath(s.points, INK, 4);
+      }
+
+      if (drawing && livePoints.length > 1) {
+        drawPath(livePoints, INK, 4);
+      }
+    }
+
+    function removeDigitStroke(zone) {
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        if (strokes[i].type === "digit" && strokes[i].zone === zone) {
+          strokes.splice(i, 1);
+        }
+      }
+    }
+
+    function removeTensPending() {
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        if (strokes[i].type === "tensPending") strokes.splice(i, 1);
+      }
+    }
+
     function showOnesEquation() {
       if (onesShown) return;
       onesShown = true;
-      equationsEl.innerHTML = '<div class="eq">4×2=8</div>';
+      const p = currentProblem();
+      equationsEl.innerHTML = `<div class="eq">${p.onesEq}</div>`;
+    }
+
+    function renderEquations(lines) {
+      equationsEl.innerHTML = lines.map((t) => `<div class="eq">${t}</div>`).join("");
     }
 
     function showTensEquations() {
       if (tensShown) return;
       tensShown = true;
-      equationsEl.innerHTML =
-        '<div class="eq">4×2=8</div>' +
-        '<div class="eq">20×2=40</div>' +
-        '<div class="eq">40+8=48</div>';
+      const p = currentProblem();
+      const lines = [p.onesEq, p.tensEq1];
+      if (!p.hasHundreds) lines.push(p.tensEq2);
+      renderEquations(lines);
     }
 
-    function onStrokeEnd(pts) {
-      const zones = getZones();
-      const zone = strokeZone(pts, zones);
-      if (!zone) return;
+    function showFinalEquations() {
+      if (finalShown) return;
+      finalShown = true;
+      const p = currentProblem();
+      renderEquations([p.onesEq, p.tensEq1, p.tensEq2]);
+    }
 
-      if (zone === "ones") {
-        onesWrites++;
-        if (onesWrites >= 1) showOnesEquation();
-      } else if (zone === "tens") {
-        tensWrites++;
-        if (tensWrites >= 2) showTensEquations();
+    function commitStroke(pts) {
+      const zones = getZones();
+      const hit = classifyStroke(pts, zones);
+      if (!hit) return;
+
+      if (hit.type === "above") {
+        strokes.push(hit);
+        return;
+      }
+
+      if (hit.type === "nearAbove") {
+        if (hit.carry) {
+          for (let i = strokes.length - 1; i >= 0; i--) {
+            if (strokes[i].type === "nearAbove" && strokes[i].carry) strokes.splice(i, 1);
+          }
+        }
+        strokes.push(hit);
+        return;
+      }
+
+      if (hit.type === "free") {
+        strokes.push(hit);
+        return;
+      }
+
+      if (hit.type === "below") {
+        const p = currentProblem();
+        if (hit.zone === "ones") {
+          removeDigitStroke("ones");
+          strokes.push({ type: "digit", zone: "ones", digit: p.onesAnswer });
+          onesWrites++;
+          if (onesWrites >= 1) showOnesEquation();
+        } else if (hit.zone === "tens") {
+          const needTens = p.tensStrokes ?? 2;
+          tensWrites++;
+          if (tensWrites < needTens) {
+            strokes.push({ type: "tensPending", points: pts.slice() });
+          } else {
+            removeTensPending();
+            removeDigitStroke("tens");
+            strokes.push({ type: "digit", zone: "tens", digit: p.tensAnswer });
+            showTensEquations();
+          }
+        } else if (hit.zone === "hundreds" && p.hasHundreds) {
+          removeDigitStroke("hundreds");
+          strokes.push({ type: "digit", zone: "hundreds", digit: p.hundredsAnswer });
+          hundredsWrites++;
+          if (hundredsWrites >= 1) showFinalEquations();
+        }
       }
     }
 
@@ -333,35 +719,54 @@
     function start(e) {
       e.preventDefault();
       drawing = true;
-      points = [getPos(e)];
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
+      livePoints = [getPos(e)];
+      redraw();
     }
 
     function move(e) {
       if (!drawing) return;
       e.preventDefault();
-      const p = getPos(e);
-      points.push(p);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
+      livePoints.push(getPos(e));
+      redraw();
     }
 
     function end(e) {
       if (!drawing) return;
       e.preventDefault();
       drawing = false;
-      onStrokeEnd(points);
-      points = [];
+      commitStroke(livePoints);
+      livePoints = [];
+      redraw();
     }
 
     function reset() {
+      strokes.length = 0;
       onesWrites = 0;
       tensWrites = 0;
+      hundredsWrites = 0;
       onesShown = false;
       tensShown = false;
+      finalShown = false;
       equationsEl.innerHTML = "";
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      livePoints = [];
+      drawing = false;
+      redraw();
+    }
+
+    function applyProblem() {
+      const p = currentProblem();
+      document.title = p.title;
+      digitTens.textContent = p.tens;
+      digitOnes.textContent = p.ones;
+      multiplierEl.textContent = p.multiplier;
+      slotHundreds.hidden = !p.hasHundreds;
+      reset();
+      resizeCanvas();
+    }
+
+    function nextProblem() {
+      problemIndex = (problemIndex + 1) % problems.length;
+      applyProblem();
     }
 
     canvas.addEventListener("mousedown", start);
@@ -376,8 +781,10 @@
     canvas.addEventListener("touchend", end, { passive: false });
 
     resetBtn.addEventListener("click", reset);
+    nextBtn.addEventListener("click", nextProblem);
     window.addEventListener("resize", resizeCanvas);
 
+    applyProblem();
     resizeCanvas();
   </script>
 </body>
