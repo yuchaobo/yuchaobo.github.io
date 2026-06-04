@@ -11,8 +11,8 @@
       height: 100%;
       overflow: hidden;
       font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
-      background: #050a14;
-      color: #e8eef8;
+      background: #fef9e7;
+      color: #2c2416;
       -webkit-tap-highlight-color: transparent;
     }
     #canvas-wrap {
@@ -22,6 +22,27 @@
     }
     #canvas-wrap canvas { display: block; width: 100%; height: 100%; }
 
+    .pile-labels {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .pile-label {
+      position: absolute;
+      transform: translate(-50%, 0);
+      padding: 5px 12px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a1408;
+      background: rgba(255, 252, 245, 0.94);
+      border: 1px solid rgba(180, 150, 100, 0.55);
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(120, 90, 40, 0.15);
+      white-space: nowrap;
+    }
+
     .overlay { position: fixed; z-index: 10; pointer-events: none; }
     .overlay * { pointer-events: auto; }
 
@@ -30,11 +51,11 @@
       left: 14px;
       width: min(252px, 46vw);
       padding: 15px;
-      background: rgba(18, 24, 38, 0.82);
-      border: 1px solid rgba(120, 150, 200, 0.22);
+      background: rgba(255, 252, 245, 0.94);
+      border: 1px solid rgba(200, 170, 120, 0.45);
       border-radius: 16px;
       backdrop-filter: blur(10px);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      box-shadow: 0 8px 24px rgba(120, 90, 40, 0.12);
     }
 
     .field {
@@ -54,31 +75,32 @@
       font-size: 13px;
       flex-shrink: 0;
     }
-    .icon-a { background: rgba(231, 76, 60, 0.35); color: #ff8a80; }
-    .icon-b { background: rgba(155, 89, 182, 0.35); color: #ce93d8; }
-    .field label { flex: 1; opacity: 0.92; white-space: nowrap; }
+    .icon-a { background: rgba(231, 76, 60, 0.2); color: #c0392b; }
+    .icon-b { background: rgba(155, 89, 182, 0.2); color: #8e44ad; }
+    .field label { flex: 1; opacity: 0.9; white-space: nowrap; color: #2c2416; }
     .field .val {
       min-width: 64px;
       min-height: 32px;
       padding: 6px 12px;
       text-align: center;
-      background: rgba(0, 0, 0, 0.45);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(180, 150, 100, 0.5);
       border-radius: 9px;
       cursor: pointer;
       font-size: 17px;
       font-weight: 600;
+      color: #2c2416;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
     .field .val.empty {
-      color: rgba(232, 238, 248, 0.35);
+      color: rgba(80, 65, 45, 0.4);
     }
     .field .val.empty::after {
       content: "—";
     }
     .field .val:hover, .field .val.active {
-      border-color: rgba(100, 180, 255, 0.65);
-      box-shadow: 0 0 12px rgba(52, 152, 219, 0.35);
+      border-color: rgba(52, 152, 219, 0.65);
+      box-shadow: 0 0 10px rgba(52, 152, 219, 0.25);
     }
 
     .btn-row { margin-top: 8px; }
@@ -86,22 +108,33 @@
     .btn-flow {
       display: flex;
       flex-direction: column;
-      align-items: stretch;
+      align-items: center;
       width: 100%;
-      margin-top: 10px;
+      margin-top: 12px;
+      gap: 2px;
     }
-    .btn-flow .btn { margin-top: 0; }
+    .btn-flow .btn {
+      margin-top: 0;
+      width: 76px;
+      height: 76px;
+      padding: 0;
+      border-radius: 12px;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
     .flow-arrow {
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 22px;
-      color: rgba(160, 190, 230, 0.8);
-      font-size: 17px;
+      height: 32px;
+      color: #0d0a06;
+      font-size: 30px;
+      font-weight: 900;
       line-height: 1;
+      -webkit-text-stroke: 1.2px #0d0a06;
+      paint-order: stroke fill;
       pointer-events: none;
       user-select: none;
-      text-shadow: 0 0 8px rgba(52, 152, 219, 0.35);
     }
     .btn {
       display: flex;
@@ -137,15 +170,15 @@
 
     .eq-panel {
       padding: 16px 18px;
-      background: rgba(10, 16, 28, 0.88);
-      border: 1px solid rgba(120, 150, 200, 0.22);
+      background: rgba(255, 252, 245, 0.94);
+      border: 1px solid rgba(200, 170, 120, 0.45);
       border-radius: 16px;
       backdrop-filter: blur(10px);
-      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+      box-shadow: 0 8px 24px rgba(120, 90, 40, 0.12);
     }
     .eq-panel-title {
       font-size: 14px;
-      color: #7ec8ff;
+      color: #2471a3;
       font-weight: 600;
       margin-bottom: 12px;
       letter-spacing: 0.08em;
@@ -159,12 +192,13 @@
       font-size: 20px;
       font-weight: 600;
       line-height: 1.55;
-      color: #e8eef8;
+      color: #2c2416;
       letter-spacing: 0.04em;
       animation: eqFadeIn 0.35s ease forwards;
     }
-    .eq-line.main { color: #fff; font-size: 23px; }
-    .eq-line.sum { color: #7bed9f; }
+    .eq-line.main { color: #1a1408; font-size: 23px; }
+    .eq-line.pile { color: #6b5344; font-size: 19px; }
+    .eq-line.sum { color: #1e8449; }
     @keyframes eqFadeIn {
       from { opacity: 0; transform: translateX(10px); }
       to { opacity: 1; transform: translateX(0); }
@@ -175,11 +209,15 @@
       right: 14px;
       left: auto;
       max-width: min(280px, 52vw);
+      padding: 8px 12px;
       font-size: 12px;
       line-height: 1.55;
-      color: rgba(232, 238, 248, 0.88);
+      color: rgba(44, 36, 22, 0.9);
       text-align: right;
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+      background: rgba(255, 252, 245, 0.92);
+      border: 1px solid rgba(200, 170, 120, 0.4);
+      border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(120, 90, 40, 0.1);
       pointer-events: none;
     }
 
@@ -188,14 +226,16 @@
       left: 14px;
       max-width: min(340px, 70vw);
       padding: 10px 14px;
-      background: rgba(10, 16, 28, 0.72);
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 252, 245, 0.94);
+      border-radius: 12px;
+      border: 1px solid rgba(200, 170, 120, 0.45);
+      box-shadow: 0 8px 24px rgba(120, 90, 40, 0.12);
       font-size: 12px;
       line-height: 1.65;
+      color: #2c2416;
       pointer-events: none;
     }
-    .hint-bottom strong { color: #7ec8ff; font-weight: 600; }
+    .hint-bottom strong { color: #2471a3; font-weight: 600; }
 
     .hint-br {
       bottom: 14px;
@@ -204,7 +244,7 @@
       max-width: min(260px, 48vw);
       font-size: 11px;
       line-height: 1.55;
-      color: rgba(200, 210, 230, 0.75);
+      color: rgba(60, 52, 40, 0.75);
       text-align: right;
       pointer-events: none;
     }
@@ -257,6 +297,7 @@
 </head>
 <body>
   <div id="canvas-wrap"></div>
+  <div id="pile-labels" class="pile-labels"></div>
 
   <div class="overlay panel">
     <div class="field">
@@ -272,11 +313,11 @@
     <div class="btn-row">
       <button type="button" class="btn btn-purple" id="btnGen">⊕ 生成 &amp; 重置</button>
       <div class="btn-flow">
-        <button type="button" class="btn btn-orange" id="btnSplit">⇄ 拆 (Split)</button>
+        <button type="button" class="btn btn-orange" id="btnSplit">拆</button>
         <span class="flow-arrow" aria-hidden="true">↓</span>
-        <button type="button" class="btn btn-blue" id="btnCalc">∑ 算 (Calc)</button>
+        <button type="button" class="btn btn-blue" id="btnCalc">算</button>
         <span class="flow-arrow" aria-hidden="true">↓</span>
-        <button type="button" class="btn btn-green" id="btnCombine">⊕ 合 (Combine)</button>
+        <button type="button" class="btn btn-green" id="btnCombine">合</button>
       </div>
     </div>
   </div>
@@ -315,17 +356,45 @@
     const BLOCK = 0.42;
     const GAP = 0.46;
     const COL_STEP = 1.05;
+    /** 堆内方块横向、纵深间隙（相同，不改方块尺寸）；竖向仍用 GAP */
+    const PILE_INNER_GAP = 0.2;
+    const BLOCK_SP = BLOCK + PILE_INNER_GAP;
     const PLACES = [1, 10, 100, 1000];
     const MAX_NUM_A = 9999;
 
     let numA = 12, numB = 3;
     let mode = "multiply"; // multiply | decompose | calculate | combine
     let eqStep = 0; // 0 空 | 1 总式 | 2 +按位乘 | 3 +相加
+    let visiblePileFormulasKey = "";
+    let visiblePileFormulasList = [];
     let blocks = [];
+    let segments = [];
+    let selectedSeg = null;
+    let dragActive = false;
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const dragHit = new THREE.Vector3();
+    const dragOffset = new THREE.Vector3();
     let keypadTarget = null;
     let keypadBuffer = "";
 
     const wrap = document.getElementById("canvas-wrap");
+    const pileLabelsEl = document.getElementById("pile-labels");
+    /** 同位各组中心最大间距，小于此值才显示「几×几」标签 */
+    const CLUSTER_MAX_DIST = 2.1;
+    const FIT_MARGIN = 1.35;
+    /** 小布局（如两位数）至少按此横向跨度取景，避免过近 */
+    const FIT_SPAN_MIN = 10;
+    /** 横向跨度 ≤ 参考值时线性取景；超出部分次线性压缩，避免大数时相机过远 */
+    const FIT_SPAN_REF = 14;
+    const FIT_SPAN_GROWTH = 0.55;
+    const FIT_DIST_MAX = 30;
+    const VIEW_OFFSET = new THREE.Vector3(0.48, 0.38, 0.72).normalize();
+    const _worldUp = new THREE.Vector3(0, 1, 0);
+    const _viewDir = new THREE.Vector3();
+    const _camRight = new THREE.Vector3();
+    const _projVec = new THREE.Vector3();
     const hintTop = document.getElementById("hintTop");
     const eqLinesEl = document.getElementById("eqLines");
     const hintBottom = document.getElementById("hintBottom");
@@ -336,8 +405,8 @@
     const keypadGrid = document.getElementById("keypadGrid");
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x050a14);
-    scene.fog = new THREE.Fog(0x050a14, 18, 42);
+    scene.background = new THREE.Color(0xfef9e7);
+    scene.fog = new THREE.Fog(0xfef9e7, 12, 80);
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
     camera.position.set(6, 7.5, 11);
@@ -356,9 +425,9 @@
     controls.minDistance = 5;
     controls.maxDistance = 22;
     controls.maxPolarAngle = Math.PI / 2.05;
-    controls.enablePan = false;
+    controls.enablePan = true;
 
-    scene.add(new THREE.AmbientLight(0x4466aa, 0.55));
+    scene.add(new THREE.AmbientLight(0xfff5e0, 0.75));
     const dir = new THREE.DirectionalLight(0xffffff, 1.1);
     dir.position.set(8, 14, 6);
     dir.castShadow = true;
@@ -371,13 +440,13 @@
     const blockGroup = new THREE.Group();
     scene.add(blockGroup);
 
-    const grid = new THREE.GridHelper(24, 24, 0x2a5a8a, 0x152535);
+    const grid = new THREE.GridHelper(24, 24, 0xc4a574, 0xe8dcc0);
     grid.position.y = 0.01;
     scene.add(grid);
 
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(24, 24),
-      new THREE.MeshStandardMaterial({ color: 0x081018, transparent: true, opacity: 0.85 })
+      new THREE.MeshStandardMaterial({ color: 0xf5e8c8, transparent: true, opacity: 0.9 })
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -390,14 +459,34 @@
       }));
     }
 
+    const PLACE_GAP = 0.5;
+    /** 算/合：百十个同排时，位与位之间的横向间距 */
+    const COMBINE_PLACE_GAP = 0.55;
+
     function placeUnitWidth(place) {
-      if (place === 100) return 10 * COL_STEP;
-      if (place === 1000) return 100 * COL_STEP;
-      return COL_STEP;
+      if (place === 100) return 10 * BLOCK_SP;
+      if (place === 1000) return 100 * BLOCK_SP;
+      return BLOCK_SP;
     }
 
-    function placeGroupWidth(place, count) {
+    /** 占位宽度（排布间距） */
+    function placeGroupWidth(place, count, stackPile = false) {
+      if (stackPile && count > 0 && (place === 100 || place === 1000)) return placeUnitWidth(place);
       return count * placeUnitWidth(place);
+    }
+
+    function isThreeDigitMult() {
+      return numA >= 100 && numA <= 999;
+    }
+
+    /** 算/合：该位段横向占位（三位数时各组纵深叠放，宽度不按组数展开） */
+    function combinePlaceSegWidth(place, digit) {
+      if (isThreeDigitMult()) {
+        if (place === 1) return BLOCK_SP;
+        return placeGroupWidth(place, digit);
+      }
+      if (place === 1) return numB * BLOCK_SP;
+      return placeGroupWidth(place, digit * numB);
     }
 
     function decomposeExpr(n) {
@@ -429,7 +518,12 @@
       const product = numA * numB;
       const partials = getEquationPartials(numA, numB);
       const items = [];
-      if (step >= 1) items.push({ cls: "main", text: `${numA}×${numB}=${product}` });
+      if (step >= 1) {
+        items.push({
+          cls: "main",
+          text: step === 1 ? `${numA}×${numB}` : `${numA}×${numB}=${product}`
+        });
+      }
       if (step >= 2) {
         for (const p of partials) items.push({ cls: "partial", text: `${p.term}×${numB}=${p.value}` });
       }
@@ -440,11 +534,27 @@
       return items;
     }
 
+    function isFormulaOnPanel(text, items) {
+      return items.some((it) => it.text === text || it.text.startsWith(`${text}=`));
+    }
+
     function renderEqPanel() {
       const items = getEquationLineItems(eqStep);
-      eqLinesEl.innerHTML = items
+      const pileItems = visiblePileFormulasList
+        .filter((text) => !isFormulaOnPanel(text, items))
+        .map((text) => ({ cls: "pile", text }));
+      const all = [...items, ...pileItems];
+      eqLinesEl.innerHTML = all
         .map((item) => `<div class="eq-line ${item.cls}">${item.text}</div>`)
         .join("");
+    }
+
+    function syncVisiblePileFormulas(formulas) {
+      const key = formulas.join("\0");
+      if (key === visiblePileFormulasKey) return;
+      visiblePileFormulasKey = key;
+      visiblePileFormulasList = formulas;
+      renderEqPanel();
     }
 
     function setEqStep(step) {
@@ -468,41 +578,77 @@
       return lines.join("<br>");
     }
 
-    function groupInnerWidth(places) {
+    function estimateSegWidth(place, digit, stackPile = false) {
+      if (place === 1) return BLOCK;
+      if (stackPile && place === 100) return 9 * BLOCK_SP + BLOCK;
+      if (place === 10) return (Math.max(1, digit) - 1) * BLOCK_SP + BLOCK;
+      const uw = placeUnitWidth(place);
+      return (digit - 1) * uw + BLOCK;
+    }
+
+    function groupInnerWidth(places, stackPile = false) {
+      const active = [...places].reverse().filter((p) => p.digit > 0);
       let w = 0;
-      for (const { place, digit } of [...places].reverse()) {
-        if (digit === 0) continue;
-        w += place === 1 ? COL_STEP : placeGroupWidth(place, digit);
-      }
+      active.forEach((p, i) => {
+        w += estimateSegWidth(p.place, p.digit, stackPile);
+        if (i < active.length - 1) w += PLACE_GAP;
+      });
       return w;
     }
 
-    /** 绘制一个 place 位值单元（整10/整100/整1000），返回占用宽度 */
-    function drawPlaceUnit(baseX, z, place, color) {
+    /** 绘制一个 place 位值单元，返回占用宽度 */
+    function drawPlaceUnit(seg, lx, lz, place, color) {
       if (place === 10) {
-        for (let y = 0; y < 10; y++) addBlock(baseX, y, z, color);
+        for (let y = 0; y < 10; y++) addBlock(seg, lx, y, lz, color);
       } else if (place === 100) {
         for (let cx = 0; cx < 10; cx++) {
-          for (let y = 0; y < 10; y++) addBlock(baseX + cx * COL_STEP, y, z, color);
+          for (let y = 0; y < 10; y++) addBlock(seg, lx + cx * BLOCK_SP, y, lz, color);
         }
       } else if (place === 1000) {
         for (let flat = 0; flat < 10; flat++) {
-          const flatX = baseX + flat * 10 * COL_STEP;
+          const flatX = lx + flat * 10 * BLOCK_SP;
           for (let cx = 0; cx < 10; cx++) {
-            for (let y = 0; y < 10; y++) addBlock(flatX + cx * COL_STEP, y, z, color);
+            for (let y = 0; y < 10; y++) addBlock(seg, flatX + cx * BLOCK_SP, y, lz, color);
           }
         }
       }
       return placeUnitWidth(place);
     }
 
-    function drawPlaceGroup(baseX, z, place, digit, color) {
+    function drawPlaceGroup(seg, lx, lz, place, digit, color, stackPile = false) {
+      if (stackPile && digit > 0 && place === 100) {
+        for (let h = 0; h < digit; h++) {
+          for (let cx = 0; cx < 10; cx++) {
+            for (let y = 0; y < 10; y++) addBlock(seg, lx + cx * BLOCK_SP, y, lz + h * BLOCK_SP, color);
+          }
+        }
+        return placeUnitWidth(place);
+      }
+      if (stackPile && digit > 0 && place === 1000) {
+        for (let k = 0; k < digit; k++) {
+          const zOff = lz + k * BLOCK_SP;
+          for (let flat = 0; flat < 10; flat++) {
+            const flatX = lx + flat * 10 * BLOCK_SP;
+            for (let cx = 0; cx < 10; cx++) {
+              for (let y = 0; y < 10; y++) addBlock(seg, flatX + cx * BLOCK_SP, y, zOff, color);
+            }
+          }
+        }
+        return placeUnitWidth(place);
+      }
       let w = 0;
       for (let i = 0; i < digit; i++) {
-        drawPlaceUnit(baseX + w, z, place, color);
+        drawPlaceUnit(seg, lx + w, lz, place, color);
         w += placeUnitWidth(place);
       }
       return w;
+    }
+
+    function finishBuild() {
+      centerGroup();
+      animateIn();
+      fitCameraToBlocks();
+      updateHints();
     }
 
     function parseInputs() {
@@ -515,12 +661,194 @@
     }
 
     function clearBlocks() {
+      deselectSegment();
       for (const b of blocks) {
-        blockGroup.remove(b.mesh);
         b.mesh.geometry.dispose();
         b.mesh.material.dispose();
       }
+      for (const seg of segments) blockGroup.remove(seg.threeGroup);
       blocks = [];
+      segments = [];
+      pileLabelsEl.innerHTML = "";
+      visiblePileFormulasKey = "";
+      visiblePileFormulasList = [];
+    }
+
+    function formulaForPlace(place) {
+      const digit = Math.floor(numA / place) % 10;
+      if (digit === 0) return null;
+      const term = digit * place;
+      return `${term}×${numB}`;
+    }
+
+    function isPlaceClustered(segs) {
+      if (segs.length < 2) return false;
+      const centers = segs.map((s) => {
+        const c = new THREE.Vector3();
+        s.threeGroup.getWorldPosition(c);
+        return c;
+      });
+      let maxDist = 0;
+      for (let i = 0; i < centers.length; i++) {
+        for (let j = i + 1; j < centers.length; j++) {
+          maxDist = Math.max(
+            maxDist,
+            Math.hypot(centers[i].x - centers[j].x, centers[i].z - centers[j].z)
+          );
+        }
+      }
+      return maxDist < CLUSTER_MAX_DIST;
+    }
+
+    function worldToScreen(worldPos) {
+      _projVec.copy(worldPos).project(camera);
+      const rect = renderer.domElement.getBoundingClientRect();
+      return {
+        x: rect.left + (_projVec.x * 0.5 + 0.5) * rect.width,
+        y: rect.top + (-_projVec.y * 0.5 + 0.5) * rect.height,
+        behind: _projVec.z > 1
+      };
+    }
+
+    function updatePileLabels() {
+      pileLabelsEl.innerHTML = "";
+      if (!segments.length) {
+        syncVisiblePileFormulas([]);
+        return;
+      }
+
+      const byPlace = new Map();
+      segments.forEach((seg) => {
+        if (!byPlace.has(seg.place)) byPlace.set(seg.place, []);
+        byPlace.get(seg.place).push(seg);
+      });
+
+      const panelFormulas = [];
+
+      [...byPlace.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .forEach(([place, segs]) => {
+          if (!isPlaceClustered(segs)) return;
+          const text = formulaForPlace(place);
+          if (!text) return;
+
+          panelFormulas.push(text);
+
+          const box = new THREE.Box3();
+          segs.forEach((s) => box.expandByObject(s.threeGroup));
+          const anchor = new THREE.Vector3(
+            (box.min.x + box.max.x) / 2,
+            box.min.y - 0.25,
+            (box.min.z + box.max.z) / 2
+          );
+          const screen = worldToScreen(anchor);
+          if (screen.behind) return;
+
+          const el = document.createElement("div");
+          el.className = "pile-label";
+          el.textContent = text;
+          el.style.left = `${screen.x}px`;
+          el.style.top = `${screen.y}px`;
+          pileLabelsEl.appendChild(el);
+        });
+
+      syncVisiblePileFormulas(panelFormulas);
+    }
+
+    function createSegment(multIdx, place) {
+      const threeGroup = new THREE.Group();
+      threeGroup.scale.set(1, 1, 1);
+      blockGroup.add(threeGroup);
+      const seg = { multIdx, place, threeGroup, meshes: [] };
+      segments.push(seg);
+      return seg;
+    }
+
+    function findSegmentFromObject(obj) {
+      let o = obj;
+      while (o) {
+        const seg = segments.find((s) => s.threeGroup === o);
+        if (seg) return seg;
+        o = o.parent;
+      }
+      return null;
+    }
+
+    function highlightSegment(seg, on) {
+      if (!seg) return;
+      seg.meshes.forEach((m) => {
+        m.material.emissive.setHex(on ? 0x4466aa : 0x000000);
+        m.material.emissiveIntensity = on ? 0.28 : 0;
+      });
+    }
+
+    function deselectSegment() {
+      if (selectedSeg) highlightSegment(selectedSeg, false);
+      selectedSeg = null;
+      dragActive = false;
+      controls.enabled = true;
+      renderer.domElement.style.cursor = "";
+    }
+
+    function setMouseFromEvent(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    }
+
+    /** 方块包围盒在相机横向（左右）上的投影宽度 */
+    function getBlockHorizontalSpan(box) {
+      _viewDir.copy(VIEW_OFFSET).negate().normalize();
+      _camRight.crossVectors(_worldUp, _viewDir);
+      if (_camRight.lengthSq() < 1e-8) _camRight.set(1, 0, 0);
+      else _camRight.normalize();
+
+      const xs = [box.min.x, box.max.x];
+      const ys = [box.min.y, box.max.y];
+      const zs = [box.min.z, box.max.z];
+      let minR = Infinity;
+      let maxR = -Infinity;
+      for (let xi = 0; xi < 2; xi++) {
+        for (let yi = 0; yi < 2; yi++) {
+          for (let zi = 0; zi < 2; zi++) {
+            _projVec.set(xs[xi], ys[yi], zs[zi]);
+            const r = _projVec.dot(_camRight);
+            if (r < minR) minR = r;
+            if (r > maxR) maxR = r;
+          }
+        }
+      }
+      return Math.max(maxR - minR, 0.5);
+    }
+
+    function effectiveSpanForFit(spanH) {
+      const h = Math.max(spanH, FIT_SPAN_MIN);
+      if (h <= FIT_SPAN_REF) return h;
+      return FIT_SPAN_REF + Math.pow(h - FIT_SPAN_REF, FIT_SPAN_GROWTH);
+    }
+
+    function fitCameraToBlocks() {
+      const box = new THREE.Box3().setFromObject(blockGroup);
+      if (box.isEmpty()) return;
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const spanH = getBlockHorizontalSpan(box);
+      const spanFit = effectiveSpanForFit(spanH);
+      const fovRad = (camera.fov * Math.PI) / 180;
+      const hFov = 2 * Math.atan(Math.tan(fovRad / 2) * camera.aspect);
+      let d = Math.max(spanFit / 2 / Math.tan(hFov / 2), 1) * FIT_MARGIN;
+      d = Math.min(d, FIT_DIST_MAX);
+      camera.position.set(
+        center.x + VIEW_OFFSET.x * d,
+        center.y + VIEW_OFFSET.y * d,
+        center.z + VIEW_OFFSET.z * d
+      );
+      controls.target.set(center.x, Math.max(0.6, center.y), center.z);
+      controls.minDistance = Math.max(2, d * 0.25);
+      controls.maxDistance = Math.max(50, d * 4);
+      scene.fog.near = d * 0.4;
+      scene.fog.far = d * 4 + size.y * 2;
+      camera.updateProjectionMatrix();
     }
 
     function makeBlock(color, emissive = 0) {
@@ -543,12 +871,21 @@
       return mesh;
     }
 
-    function addBlock(x, y, z, color, emissive = 0) {
+    function addBlock(seg, lx, y, lz, color, emissive = 0) {
       const mesh = makeBlock(color, emissive);
-      mesh.position.set(x * GAP, y * GAP + BLOCK / 2, z * GAP);
-      blockGroup.add(mesh);
-      blocks.push({ mesh, x, y, z, color });
+      mesh.position.set(lx, y * GAP + BLOCK / 2, lz * BLOCK_SP);
+      seg.threeGroup.add(mesh);
+      seg.meshes.push(mesh);
+      blocks.push({ mesh, seg });
       return mesh;
+    }
+
+    function measureSegWidth(seg) {
+      let maxX = 0;
+      seg.meshes.forEach((m) => {
+        maxX = Math.max(maxX, m.position.x + BLOCK / 2);
+      });
+      return maxX;
     }
 
     function animateIn() {
@@ -581,29 +918,31 @@
       clearBlocks();
       const { places } = parseInputs();
       const groups = numB;
-      const groupInnerW = groupInnerWidth(places);
-      const groupW = groupInnerW + 1.0;
+      const groupInnerW = groupInnerWidth(places, true);
+      const groupW = groupInnerW + 1.3;
       const startX = -((groups - 1) * groupW) / 2;
 
       for (let g = 0; g < groups; g++) {
         const gx = startX + g * groupW;
         const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
         let x = gx - groupInnerW / 2;
+        const activePlaces = [...places].reverse().filter((p) => p.digit > 0);
 
-        for (const { place, digit } of [...places].reverse()) {
-          if (digit === 0) continue;
+        activePlaces.forEach((p, i) => {
+          const { place, digit } = p;
+          const seg = createSegment(g, place);
+          seg.threeGroup.position.set(x, 0, 0);
           if (place === 1) {
-            for (let y = 0; y < digit; y++) addBlock(x + COL_STEP / 2, y, 0, colColor);
-            x += COL_STEP;
+            for (let y = 0; y < digit; y++) addBlock(seg, 0, y, 0, colColor);
           } else {
-            x += drawPlaceGroup(x, 0, place, digit, colColor);
+            drawPlaceGroup(seg, 0, 0, place, digit, colColor, true);
           }
-        }
+          if (i < activePlaces.length - 1) x += measureSegWidth(seg) + PLACE_GAP;
+          else x += measureSegWidth(seg);
+        });
       }
 
-      centerGroup();
-      animateIn();
-      updateHints();
+      finishBuild();
     }
 
   /** 分模式：乘数份，每组一整列（未拆），组内同色 */
@@ -616,57 +955,64 @@
       for (let g = 0; g < groups; g++) {
         const gx = startX + g * groupW;
         const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
-        for (let y = 0; y < numA; y++) addBlock(gx, y, 0, colColor);
+        const seg = createSegment(g, 0);
+        seg.threeGroup.position.set(gx, 0, 0);
+        for (let y = 0; y < numA; y++) addBlock(seg, 0, y, 0, colColor);
       }
 
-      centerGroup();
-      animateIn();
-      updateHints();
+      finishBuild();
     }
 
-  /** 合/算：各位乘积合并（合模式时整位与个位横向更紧凑） */
+  /** 合/算：各位乘积同排横向排列，位与位之间留间距 */
     function buildCombine() {
       clearBlocks();
       const { places } = parseInputs();
-      const tight = mode === "combine";
-      const segGap = (nextPlace) => (tight ? 0.15 : nextPlace === 1 ? 0.6 : 0.4);
       const activePlaces = [...places].reverse().filter((p) => p.digit > 0);
+
+      const stackGroups = isThreeDigitMult();
 
       let totalW = 0;
       activePlaces.forEach((p, i) => {
-        if (p.place === 1) totalW += numB * COL_STEP;
-        else totalW += placeGroupWidth(p.place, p.digit * numB);
+        totalW += combinePlaceSegWidth(p.place, p.digit);
         const next = activePlaces[i + 1];
-        if (next) totalW += segGap(next.place);
+        if (next) totalW += COMBINE_PLACE_GAP;
       });
 
       let x = -totalW / 2;
       activePlaces.forEach((p, i) => {
         const { place, digit } = p;
+        const seg = createSegment(0, place);
+        seg.threeGroup.position.set(x, 0, 0);
         if (place === 1) {
           for (let g = 0; g < numB; g++) {
             const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
-            for (let y = 0; y < digit; y++) {
-              addBlock(x + g * COL_STEP + COL_STEP / 2, y, 0.6, colColor);
+            if (stackGroups) {
+              for (let y = 0; y < digit; y++) addBlock(seg, 0, y, g, colColor);
+            } else {
+              for (let y = 0; y < digit; y++) addBlock(seg, g * BLOCK_SP, y, 0, colColor);
             }
           }
-          x += numB * COL_STEP;
+        } else if (stackGroups) {
+          for (let g = 0; g < numB; g++) {
+            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
+            drawPlaceGroup(seg, 0, g, place, digit, colColor, false);
+          }
         } else {
+          let lx = 0;
           for (let g = 0; g < numB; g++) {
             const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             for (let d = 0; d < digit; d++) {
-              drawPlaceUnit(x, -0.4, place, colColor);
-              x += placeUnitWidth(place);
+              drawPlaceUnit(seg, lx, 0, place, colColor);
+              lx += placeUnitWidth(place);
             }
           }
         }
         const next = activePlaces[i + 1];
-        if (next) x += segGap(next.place);
+        if (next) x += measureSegWidth(seg) + COMBINE_PLACE_GAP;
+        else x += measureSegWidth(seg);
       });
 
-      centerGroup();
-      animateIn();
-      updateHints();
+      finishBuild();
     }
 
     function centerGroup() {
@@ -683,21 +1029,21 @@
       const splitDesc = splitDescFromPlaces(places);
 
       if (mode === "decompose") {
-        hintTop.textContent = `拆模式：每组 ${splitDesc}，组内颜色相同`;
+        hintTop.textContent = `分模式：每组按百→十→个排列，${splitDesc}`;
         hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}<br>${numA} = ${expr}，共 ${numB} 组`;
-        hintBr.textContent = "当前模式：拆模式。整10/100/1000 列数 = 对应位数字。";
+        hintBr.textContent = "已拆开。点击百/十/个位积木堆可在地面平面拖动；滚轮缩放视角。";
       } else if (mode === "calculate") {
         hintTop.textContent = `算模式：按位相乘再相加`;
         hintBottom.innerHTML = `<strong>分步计算：</strong><br>${formatCombineFormula(numA, numB)}`;
-        hintBr.textContent = "当前模式：算模式。积木布局与「合」相同，显示分步算式。";
+        hintBr.textContent = "算模式：可拖动百/十/个位整块；滚轮缩放查看。";
       } else if (mode === "multiply") {
-        hintTop.textContent = `分模式：${numB} 组，每组 ${numA} 个方块一列，组内颜色相同`;
-        hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}<br>点击「拆」将每组拆成 ${splitDesc}`;
-        hintBr.textContent = "当前模式：分模式。点击「拆」按各位数拆分。";
+        hintTop.textContent = `分模式：${numB} 组，每组 ${numA} 个方块一列`;
+        hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}`;
+        hintBr.textContent = "当前模式：未拆分的一列显示。";
       } else {
         hintTop.textContent = `合模式：各位乘积合并（${splitDesc}）× ${numB}`;
         hintBottom.innerHTML = `<strong>乘积模式：</strong><br>${formatCombineFormula(numA, numB)}`;
-        hintBr.textContent = "当前模式：合模式。已合并各位乘积结果。";
+        hintBr.textContent = "合模式：可拖动百/十/个位整块；滚轮缩放查看。";
       }
     }
 
@@ -714,11 +1060,59 @@
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      if (blocks.length) fitCameraToBlocks();
     }
+
+    function onPointerDown(e) {
+      if (e.button !== 0 || keypadWrap.classList.contains("show")) return;
+      setMouseFromEvent(e);
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObjects(segments.flatMap((s) => s.meshes), false);
+      if (!hits.length) {
+        deselectSegment();
+        return;
+      }
+      const seg = findSegmentFromObject(hits[0].object);
+      if (!seg) return;
+      if (selectedSeg && selectedSeg !== seg) highlightSegment(selectedSeg, false);
+      selectedSeg = seg;
+      dragActive = true;
+      controls.enabled = false;
+      highlightSegment(selectedSeg, true);
+      raycaster.ray.intersectPlane(dragPlane, dragHit);
+      dragOffset.copy(dragHit).sub(selectedSeg.threeGroup.position);
+      renderer.domElement.style.cursor = "grabbing";
+      e.preventDefault();
+    }
+
+    function onPointerMove(e) {
+      if (!dragActive || !selectedSeg) return;
+      setMouseFromEvent(e);
+      raycaster.setFromCamera(mouse, camera);
+      if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return;
+      selectedSeg.threeGroup.position.x = dragHit.x - dragOffset.x;
+      selectedSeg.threeGroup.position.z = dragHit.z - dragOffset.z;
+      updatePileLabels();
+    }
+
+    function onPointerUp() {
+      if (dragActive) {
+        dragActive = false;
+        controls.enabled = true;
+        renderer.domElement.style.cursor = selectedSeg ? "grab" : "";
+      }
+      updatePileLabels();
+    }
+
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointermove", onPointerMove);
+    renderer.domElement.addEventListener("pointerup", onPointerUp);
+    renderer.domElement.addEventListener("pointerleave", onPointerUp);
 
     function loop() {
       requestAnimationFrame(loop);
       controls.update();
+      updatePileLabels();
       renderer.render(scene, camera);
     }
 
@@ -834,7 +1228,7 @@
 
     document.getElementById("btnGen").addEventListener("click", () => {
       parseInputs();
-      mode = "multiply";
+      mode = "decompose";
       setEqStep(1);
       rebuild();
     });
@@ -859,7 +1253,7 @@
     window.addEventListener("resize", resize);
     resize();
     parseInputs();
-    mode = "multiply";
+    mode = "decompose";
     setEqStep(1);
     rebuild();
     loop();
