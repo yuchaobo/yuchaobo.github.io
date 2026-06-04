@@ -475,13 +475,14 @@
       return count * placeUnitWidth(place);
     }
 
-    function isThreeDigitMult() {
-      return numA >= 100 && numA <= 999;
+    /** 两位数、三位数乘一位数：算/合时各组纵深叠放 */
+    function isCombineGroupStack() {
+      return numA >= 10 && numA <= 999;
     }
 
-    /** 算/合：该位段横向占位（三位数时各组纵深叠放，宽度不按组数展开） */
+    /** 算/合：该位段横向占位（组纵深叠放时宽度不按组数展开） */
     function combinePlaceSegWidth(place, digit) {
-      if (isThreeDigitMult()) {
+      if (isCombineGroupStack()) {
         if (place === 1) return BLOCK_SP;
         return placeGroupWidth(place, digit);
       }
@@ -969,7 +970,7 @@
       const { places } = parseInputs();
       const activePlaces = [...places].reverse().filter((p) => p.digit > 0);
 
-      const stackGroups = isThreeDigitMult();
+      const stackGroups = isCombineGroupStack();
 
       let totalW = 0;
       activePlaces.forEach((p, i) => {
