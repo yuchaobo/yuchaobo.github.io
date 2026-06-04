@@ -78,6 +78,7 @@
     .row .digit {
       width: 1.1em;
       text-align: center;
+      letter-spacing: 0;
     }
 
     .row .operator {
@@ -306,7 +307,7 @@
 
     const MIN_STROKE_LEN = 18;
     const MIN_POINTS = 4;
-    const ARROW_MIN_LEN = 25;
+    const ARROW_MIN_LEN = 12;
     const NEAR_LINE_ABOVE = 50;
     const INK = "#1a237e";
     const ARROW_COLOR = "#c62828";
@@ -367,6 +368,70 @@
         x: (r.left + r.right) / 2 - sheetRect.left,
         y: (r.top + r.bottom) / 2 - sheetRect.top
       };
+    }
+
+    function getGlyphRect(el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const rects = range.getClientRects();
+      if (rects.length > 0) {
+        let left = Infinity;
+        let top = Infinity;
+        let right = -Infinity;
+        let bottom = -Infinity;
+        for (const r of rects) {
+          left = Math.min(left, r.left);
+          top = Math.min(top, r.top);
+          right = Math.max(right, r.right);
+          bottom = Math.max(bottom, r.bottom);
+        }
+        return { left, top, right, bottom };
+      }
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    }
+
+    function getDigitTopCenter(el) {
+      const sheetRect = sheet.getBoundingClientRect();
+      const g = getGlyphRect(el);
+      return {
+        x: (g.left + g.right) / 2 - sheetRect.left,
+        y: g.top - sheetRect.top
+      };
+    }
+
+    function getDigitBottomCenter(el) {
+      const sheetRect = sheet.getBoundingClientRect();
+      const g = getGlyphRect(el);
+      return {
+        x: (g.left + g.right) / 2 - sheetRect.left,
+        y: g.bottom - sheetRect.top
+      };
+    }
+
+    /** 横线上方箭头：第 1 次矫正到个位，第 2 次到十位（从下方乘数顶部指向上方） */
+    function buildCorrectedArrow(target) {
+      const start = getDigitTopCenter(multiplierEl);
+      const endEl = target === "ones" ? digitOnes : digitTens;
+      const end = getDigitBottomCenter(endEl);
+      const len = Math.hypot(end.x - start.x, end.y - start.y);
+      return {
+        type: "above",
+        target,
+        corrected: true,
+        x1: start.x,
+        y1: start.y,
+        x2: end.x,
+        y2: end.y,
+        len
+      };
+    }
+
+    function arrowTargetForNewStroke() {
+      const above = strokes.filter((s) => s.type === "above");
+      if (above.length === 0) return "ones";
+      if (above.length === 1) return "tens";
+      return "tens";
     }
 
     function strokeLength(pts) {
@@ -547,7 +612,8 @@
 
     function drawArrow(stroke) {
       const { x1, y1, x2, y2, len } = stroke;
-      const withHead = len >= ARROW_MIN_LEN;
+      const shaftLen = len ?? Math.hypot(x2 - x1, y2 - y1);
+      const withHead = stroke.corrected || shaftLen >= ARROW_MIN_LEN;
       ctx.strokeStyle = ARROW_COLOR;
       ctx.fillStyle = ARROW_COLOR;
       ctx.lineWidth = 3;
@@ -560,7 +626,10 @@
       if (!withHead) return;
 
       const angle = Math.atan2(y2 - y1, x2 - x1);
-      const headLen = 14;
+      const headLen =
+        stroke.corrected && shaftLen < 20
+          ? Math.max(7, Math.min(11, shaftLen * 0.75))
+          : 14;
       const a1 = angle - Math.PI / 7;
       const a2 = angle + Math.PI / 7;
       ctx.beginPath();
@@ -660,7 +729,16 @@
       if (!hit) return;
 
       if (hit.type === "above") {
-        strokes.push(hit);
+        const target = arrowTargetForNewStroke();
+        if (strokes.some((s) => s.type === "above" && s.target === target)) {
+          for (let i = strokes.length - 1; i >= 0; i--) {
+            if (strokes[i].type === "above" && strokes[i].target === target) {
+              strokes.splice(i, 1);
+              break;
+            }
+          }
+        }
+        strokes.push(buildCorrectedArrow(target));
         return;
       }
 
