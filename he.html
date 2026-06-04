@@ -42,6 +42,18 @@
       box-shadow: 0 2px 10px rgba(120, 90, 40, 0.15);
       white-space: nowrap;
     }
+    .pile-label.main {
+      color: #1a1408;
+      font-size: 17px;
+      font-weight: 800;
+      transform: translate(-50%, -100%);
+      margin-top: -6px;
+    }
+    .pile-label.sum {
+      color: #1e8449;
+      border-color: rgba(46, 139, 87, 0.45);
+      font-size: 16px;
+    }
 
     .overlay { position: fixed; z-index: 10; pointer-events: none; }
     .overlay * { pointer-events: auto; }
@@ -520,15 +532,21 @@
     function getEquationLineItems(step) {
       const product = numA * numB;
       const partials = getEquationPartials(numA, numB);
+      const withResult = mode !== "calculate";
       const items = [];
       if (step >= 1) {
         items.push({
           cls: "main",
-          text: step === 1 ? `${numA}×${numB}` : `${numA}×${numB}=${product}`
+          text: withResult && step > 1 ? `${numA}×${numB}=${product}` : `${numA}×${numB}`
         });
       }
       if (step >= 2) {
-        for (const p of partials) items.push({ cls: "partial", text: `${p.term}×${numB}=${p.value}` });
+        for (const p of partials) {
+          items.push({
+            cls: "partial",
+            text: withResult ? `${p.term}×${numB}=${p.value}` : `${p.term}×${numB}`
+          });
+        }
       }
       if (step >= 3) {
         const sumExpr = [...partials].reverse().map((p) => p.value).join("+");
@@ -647,9 +665,9 @@
       return w;
     }
 
-    function finishBuild() {
+    function finishBuild(skipAnimate = false) {
       centerGroup();
-      animateIn();
+      if (!skipAnimate) animateIn();
       fitCameraToBlocks();
       updateHints();
     }
@@ -677,11 +695,19 @@
       visiblePileFormulasList = [];
     }
 
-    function formulaForPlace(place) {
+    function formulaForPlace(place, withResult = false) {
       const digit = Math.floor(numA / place) % 10;
       if (digit === 0) return null;
       const term = digit * place;
+      if (withResult) return `${term}×${numB}=${term * numB}`;
       return `${term}×${numB}`;
+    }
+
+    function getCombineSumFormula() {
+      const partials = getEquationPartials(numA, numB);
+      const product = numA * numB;
+      const sumExpr = [...partials].reverse().map((p) => p.value).join("+");
+      return `${sumExpr}=${product}`;
     }
 
     function isPlaceClustered(segs) {
@@ -701,6 +727,22 @@
         }
       }
       return maxDist < CLUSTER_MAX_DIST;
+    }
+
+    function shouldShowPlaceLabel(segs) {
+      if (mode === "calculate" || mode === "combine") return segs.length > 0;
+      return isPlaceClustered(segs);
+    }
+
+    function mountPileLabel(text, anchor, extraClass = "") {
+      const screen = worldToScreen(anchor);
+      if (screen.behind) return;
+      const el = document.createElement("div");
+      el.className = extraClass ? `pile-label ${extraClass}` : "pile-label";
+      el.textContent = text;
+      el.style.left = `${screen.x}px`;
+      el.style.top = `${screen.y}px`;
+      pileLabelsEl.appendChild(el);
     }
 
     function worldToScreen(worldPos) {
@@ -731,8 +773,8 @@
       [...byPlace.entries()]
         .sort((a, b) => b[0] - a[0])
         .forEach(([place, segs]) => {
-          if (!isPlaceClustered(segs)) return;
-          const text = formulaForPlace(place);
+          if (!shouldShowPlaceLabel(segs)) return;
+          const text = formulaForPlace(place, mode === "combine");
           if (!text) return;
 
           panelFormulas.push(text);
@@ -744,16 +786,34 @@
             box.min.y - 0.25,
             (box.min.z + box.max.z) / 2
           );
-          const screen = worldToScreen(anchor);
-          if (screen.behind) return;
-
-          const el = document.createElement("div");
-          el.className = "pile-label";
-          el.textContent = text;
-          el.style.left = `${screen.x}px`;
-          el.style.top = `${screen.y}px`;
-          pileLabelsEl.appendChild(el);
+          mountPileLabel(text, anchor);
         });
+
+      if (mode === "combine") {
+        const box = new THREE.Box3().setFromObject(blockGroup);
+        if (!box.isEmpty()) {
+          const cx = (box.min.x + box.max.x) / 2;
+          const cz = (box.min.z + box.max.z) / 2;
+          const mainText = `${numA}×${numB}=${numA * numB}`;
+          panelFormulas.unshift(mainText);
+          mountPileLabel(
+            mainText,
+            new THREE.Vector3(cx, box.max.y + 0.5, cz),
+            "main"
+          );
+
+          const partials = getEquationPartials(numA, numB);
+          if (partials.length >= 2) {
+            const sumText = getCombineSumFormula();
+            panelFormulas.push(sumText);
+            mountPileLabel(
+              sumText,
+              new THREE.Vector3(cx, box.min.y - 0.55, cz),
+              "sum"
+            );
+          }
+        }
+      }
 
       syncVisiblePileFormulas(panelFormulas);
     }
@@ -967,7 +1027,7 @@
     }
 
   /** 合/算：各位乘积同排横向排列，位与位之间留间距 */
-    function buildCombine() {
+    function buildCombine(skipAnimate = false) {
       clearBlocks();
       const { places } = parseInputs();
       const activePlaces = [...places].reverse().filter((p) => p.digit > 0);
@@ -1015,7 +1075,7 @@
         else x += measureSegWidth(seg);
       });
 
-      finishBuild();
+      finishBuild(skipAnimate);
     }
 
     function centerGroup() {
@@ -1248,9 +1308,15 @@
     });
     document.getElementById("btnCombine").addEventListener("click", () => {
       parseInputs();
+      const prevMode = mode;
       mode = "combine";
       setEqStep(3);
-      rebuild();
+      if (blocks.length && (prevMode === "calculate" || prevMode === "combine")) {
+        updateHints();
+        updatePileLabels();
+        return;
+      }
+      buildCombine(true);
     });
 
     window.addEventListener("resize", resize);
