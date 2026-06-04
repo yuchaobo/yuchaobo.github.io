@@ -460,6 +460,8 @@
     }
 
     const PLACE_GAP = 0.5;
+    /** 拆/生成：百、十、个之间的横向间距 */
+    const DECOMPOSE_PLACE_GAP = 1.15;
     /** 算/合：百十个同排时，位与位之间的横向间距 */
     const COMBINE_PLACE_GAP = 0.55;
 
@@ -587,12 +589,12 @@
       return (digit - 1) * uw + BLOCK;
     }
 
-    function groupInnerWidth(places, stackPile = false) {
+    function groupInnerWidth(places, stackPile = false, placeGap = PLACE_GAP) {
       const active = [...places].reverse().filter((p) => p.digit > 0);
       let w = 0;
       active.forEach((p, i) => {
         w += estimateSegWidth(p.place, p.digit, stackPile);
-        if (i < active.length - 1) w += PLACE_GAP;
+        if (i < active.length - 1) w += placeGap;
       });
       return w;
     }
@@ -919,7 +921,7 @@
       clearBlocks();
       const { places } = parseInputs();
       const groups = numB;
-      const groupInnerW = groupInnerWidth(places, true);
+      const groupInnerW = groupInnerWidth(places, true, DECOMPOSE_PLACE_GAP);
       const groupW = groupInnerW + 1.3;
       const startX = -((groups - 1) * groupW) / 2;
 
@@ -938,7 +940,7 @@
           } else {
             drawPlaceGroup(seg, 0, 0, place, digit, colColor, true);
           }
-          if (i < activePlaces.length - 1) x += measureSegWidth(seg) + PLACE_GAP;
+          if (i < activePlaces.length - 1) x += measureSegWidth(seg) + DECOMPOSE_PLACE_GAP;
           else x += measureSegWidth(seg);
         });
       }
