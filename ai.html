@@ -63,10 +63,10 @@
       left: 14px;
       width: min(280px, 50vw);
       padding: 15px;
-      background: rgba(255, 252, 245, 0.94);
+      background: transparent;
       border: 1px solid rgba(200, 170, 120, 0.45);
       border-radius: 16px;
-      backdrop-filter: blur(10px);
+      backdrop-filter: none;
       box-shadow: 0 8px 24px rgba(120, 90, 40, 0.12);
     }
 
@@ -244,16 +244,22 @@
       right: 14px;
       left: auto;
       bottom: auto;
-      width: min(400px, 56vw);
-      padding: 16px 18px;
-      background: rgba(255, 252, 245, 0.96);
+      width: min(380px, 50vw);
+      padding: 14px 16px;
+      background: transparent;
       border: 1px solid rgba(200, 170, 120, 0.45);
       border-radius: 16px;
-      backdrop-filter: blur(10px);
+      backdrop-filter: none;
       box-shadow: 0 8px 24px rgba(120, 90, 40, 0.12);
     }
     .vertical-multiply { position: relative; }
+    .v-content-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
     .sheet {
+      flex: 0 0 auto;
       position: relative;
       cursor: crosshair;
       touch-action: none;
@@ -293,12 +299,13 @@
       letter-spacing: 0;
     }
     .v-row .placeholder { width: 1.1em; }
+    .v-divider-row { margin: 0.35rem 0 0.5rem; }
     .v-divider {
-      width: 100%;
+      width: calc(1.3em + var(--v-cols, 2) * 1.1em);
       height: 2px;
       background: #1a237e;
-      margin: 0.35rem 0 0.5rem;
       border-radius: 2px;
+      flex-shrink: 0;
     }
     .result-row { min-height: 2.4rem; letter-spacing: 0; }
     .result-row .digit-slot {
@@ -315,14 +322,17 @@
       touch-action: none;
     }
     .v-equations {
-      margin-top: 8px;
+      flex: 0 0 auto;
+      margin-right: auto;
+      margin-top: 0;
+      padding-top: 2.6rem;
       font-family: "KaiTi", "STKaiti", "楷体", serif;
-      font-size: 1rem;
-      line-height: 1.65;
+      font-size: 1.62rem;
+      line-height: 1.5;
       color: #1565c0;
       min-height: 0;
+      text-align: left;
     }
-    .v-equations:empty { display: none; }
     .v-equations .eq {
       opacity: 0;
       animation: eqFadeIn 0.35s ease forwards;
@@ -374,11 +384,13 @@
 
   <div class="overlay vertical-panel" id="verticalPanel">
     <div class="vertical-multiply">
-      <div class="sheet" id="sheet">
-        <div class="digits-layer" id="digitsLayer"></div>
-        <canvas id="writeCanvas" aria-label="竖式书写区域"></canvas>
+      <div class="v-content-row">
+        <div class="v-equations" id="vEquations" aria-live="polite"></div>
+        <div class="sheet" id="sheet">
+          <div class="digits-layer" id="digitsLayer"></div>
+          <canvas id="writeCanvas" aria-label="竖式书写区域"></canvas>
+        </div>
       </div>
-      <div class="v-equations" id="vEquations" aria-live="polite"></div>
       <div class="v-btn-row">
         <button type="button" class="v-action-btn" id="vResetBtn">清除重写</button>
         <button type="button" class="v-action-btn primary" id="vNextBtn">下一题</button>
@@ -1904,10 +1916,11 @@
       const slots = meta.resultZones.map(
         (z) => `<span class="digit-slot" data-col="${z}" id="${slotIdForZone(z)}"></span>`
       );
+      digitsLayer.style.setProperty("--v-cols", cols);
       digitsLayer.innerHTML = `
         <div class="v-row">${pad(aDigits.length)}${aDigits.map((d) => `<span class="digit">${d}</span>`).join("")}</div>
         <div class="v-row v-row-multiply"><span class="operator">×</span>${pad(1)}<span class="digit" id="multiplierDigit">${meta.bStr}</span></div>
-        <div class="v-divider" id="vDivider"></div>
+        <div class="v-row v-divider-row"><div class="v-divider" id="vDivider"></div></div>
         <div class="v-row result-row">${pad(slots.length)}${slots.join("")}</div>`;
       vDividerEl = document.getElementById("vDivider");
       vSlotEls = {};
@@ -1956,6 +1969,10 @@
       valB.textContent = numB;
       valA.classList.remove("empty");
       valB.classList.remove("empty");
+      vEquations.innerHTML = "";
+      vOnesShown = false;
+      vTensShown = false;
+      vFinalShown = false;
       resetVerticalGather();
       syncVerticalFromNumbers();
       mode = "decompose";
