@@ -177,21 +177,6 @@
       to { opacity: 1; transform: translateX(0); }
     }
 
-    .hint-bottom {
-      bottom: 14px;
-      left: 14px;
-      max-width: min(340px, 70vw);
-      padding: 10px 14px;
-      background: rgba(255, 252, 245, 0.94);
-      border-radius: 12px;
-      border: 1px solid rgba(200, 170, 120, 0.45);
-      box-shadow: 0 8px 24px rgba(120, 90, 40, 0.12);
-      font-size: 12px;
-      line-height: 1.65;
-      color: #2c2416;
-      pointer-events: none;
-    }
-    .hint-bottom strong { color: #2471a3; font-weight: 600; }
 
     .credit-bottom {
       bottom: 14px;
@@ -421,7 +406,7 @@
     </div>
   </div>
 
-  <div class="overlay hint-bottom" id="hintBottom"></div>
+
   <div class="overlay credit-bottom">本校AI团队原创设计</div>
 
   <div class="keypad-wrap" id="keypadWrap">
@@ -443,8 +428,19 @@
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
     const GROUP_COLORS = [0xe67e22, 0xf1c40f, 0x3498db, 0x9b59b6, 0x1abc9c, 0xe74c3c, 0x2ecc71, 0x95a5a6, 0xd35400];
-    const TENS_COLOR = 0xe67e22;
-    const ONES_COLOR = 0x3498db;
+    const PLACE_COLORS = {
+      1: 0x3498db,
+      10: 0xe67e22,
+      100: 0x9b59b6,
+      1000: 0x1abc9c
+    };
+    const TENS_COLOR = PLACE_COLORS[10];
+    const ONES_COLOR = PLACE_COLORS[1];
+
+    function colorForPlace(place) {
+      if (place === 0) return PLACE_COLORS[1];
+      return PLACE_COLORS[place] ?? GROUP_COLORS[0];
+    }
     const BLOCK = 0.42;
     const GAP = 0.46;
     const COL_STEP = 1.05;
@@ -458,6 +454,8 @@
     let mode = "multiply"; // multiply | decompose | calculate | combine
     let combineAnimRunning = false;
     let verticalGatheredPlaces = []; // 竖式独立流程：已提出并合并的位
+    /** 竖式进位：toPlace -> { carryGroup, fromPlace, carryUnits } */
+    let verticalPendingCarries = new Map();
     let eqStep = 0; // 0 空 | 1 总式 | 2 +按位乘 | 3 +相加
     let visiblePileFormulasKey = "";
     let visiblePileFormulasList = [];
@@ -489,7 +487,6 @@
     const _viewDir = new THREE.Vector3();
     const _camRight = new THREE.Vector3();
     const _projVec = new THREE.Vector3();
-    const hintBottom = document.getElementById("hintBottom");
     const valA = document.getElementById("valA");
     const valB = document.getElementById("valB");
     const keypadWrap = document.getElementById("keypadWrap");
@@ -680,7 +677,7 @@
 
       let x = -totalW / 2;
       active.forEach(([place, count], i) => {
-        const colColor = GROUP_COLORS[Math.log10(place) % GROUP_COLORS.length];
+        const colColor = colorForPlace(place);
         const seg = createSegment(0, place);
         seg.threeGroup.position.set(x, 0, 0);
 
@@ -756,16 +753,6 @@
       renderEqPanel();
     }
 
-    /** 合模式左下角公式 */
-    function formatCombineFormula(n, b) {
-      const product = n * b;
-      const partials = getEquationPartials(n, b);
-      const lines = [`${n}×${b}=${product}`];
-      for (const p of partials) lines.push(`${p.term}×${b}=${p.value}`);
-      const sumExpr = [...partials].reverse().map((p) => p.value).join("+");
-      lines.push(`${sumExpr}=${product}`);
-      return lines.join("<br>");
-    }
 
     function estimateSegWidth(place, digit, stackPile = false) {
       if (place === 1) return BLOCK;
@@ -836,7 +823,6 @@
     function finishBuild(skipAnimate = true) {
       centerGroup();
       fitCameraToBlocks();
-      updateHints();
     }
 
     function parseInputs() {
@@ -1134,18 +1120,140 @@
     }
 
     /** 拆/合动画：提出与合并位移 */
-    const EXTRACT_PULL_Z = 2.0;
-    const EXTRACT_PULL_Y = 0.2;
+    const EXTRACT_PULL_Z = 1.2;
+    const EXTRACT_PULL_Y = 0.15;
     const GATHER_Z = 3.0;
     const GATHER_Y = 0.25;
     const GATHER_PLACE_GAP = 1.15;
 
+    function extractPullForPlace(place) {
+      if (place === 1) return { y: 0.1, z: 0.5 };
+      if (place === 10) return { y: EXTRACT_PULL_Y, z: 0.85 };
+      return { y: EXTRACT_PULL_Y, z: EXTRACT_PULL_Z };
+    }
+
+    function gatherDepthOffset(place) {
+      if (place === 1) return 0.55;
+      if (place === 10) return 0.3;
+      if (place === 100) return -0.5;
+      if (place === 1000) return -0.85;
+      return 0;
+    }
+
+    function pendingCarryDepthZ(toPlace) {
+      return GATHER_Z + gatherDepthOffset(toPlace) - 0.45;
+    }
+
     function measureSegWidth(seg) {
-      let maxX = 0;
+      if (!seg.meshes.length) return 0;
+      let minX = Infinity;
+      let maxX = -Infinity;
       seg.meshes.forEach((m) => {
+        minX = Math.min(minX, m.position.x - BLOCK / 2);
         maxX = Math.max(maxX, m.position.x + BLOCK / 2);
       });
-      return maxX;
+      return Math.max(maxX - minX, BLOCK);
+    }
+
+    function expectedGatherUnitCount(place) {
+      const digit = Math.floor(numA / place) % 10;
+      return digit > 0 ? digit * numB : 0;
+    }
+
+    function gatheredUnitCount(place) {
+      const seg = getGatheredSegment(place);
+      const expected = expectedGatherUnitCount(place);
+      if (seg) return groupMeshesByPlaceUnit(seg, place).length;
+      const pending = verticalPendingCarries.get(place);
+      if (pending) return Math.max(expected, pending.carryUnits);
+      return expected;
+    }
+
+    function estimatedGatheredWidth(place, unitCount) {
+      const n = Math.max(unitCount, 1);
+      if (place === 1) return BLOCK_SP;
+      if (isCombineGroupStack()) {
+        if (place === 100 || place === 1000) return placeUnitWidth(place);
+        return BLOCK_SP;
+      }
+      return placeGroupWidth(place, n);
+    }
+
+    /** 已有合并堆的数位（百→十→个，左→右） */
+    function getGatheredRowPlaces() {
+      return [...new Set(verticalGatheredPlaces.filter((p) => getGatheredSegment(p)))].sort(
+        (a, b) => b - a
+      );
+    }
+
+    function getGatheredLayoutPlaces() {
+      const places = new Set(getGatheredRowPlaces());
+      verticalPendingCarries.forEach((_, toPlace) => places.add(toPlace));
+      return [...places].sort((a, b) => b - a);
+    }
+
+    const ROW_ITEM_GAP = GATHER_PLACE_GAP * 0.2;
+
+    function rowItemWidth(item) {
+      if (item.kind === "pile") return gatheredMainWidth(item.place);
+      return estimatedGatheredWidth(item.toPlace, item.pending.carryUnits);
+    }
+
+    /** 横排元素：主堆 + 同位进位等待（如 [180整十][3进位整十][6个一]） */
+    function computeGatheredRowItems(extraPilePlaces = []) {
+      const pilePlaces = [...new Set([...getGatheredRowPlaces(), ...extraPilePlaces])].sort(
+        (a, b) => b - a
+      );
+      const pendingPlaces = [...verticalPendingCarries.keys()].sort((a, b) => b - a);
+      const allPlaces = [...new Set([...pilePlaces, ...pendingPlaces])].sort((a, b) => b - a);
+      const items = [];
+      allPlaces.forEach((pl) => {
+        if (pilePlaces.includes(pl)) items.push({ kind: "pile", place: pl });
+        const pending = verticalPendingCarries.get(pl);
+        if (pending?.carryGroup) items.push({ kind: "carry", toPlace: pl, pending });
+      });
+      return items;
+    }
+
+    function rowGapAfter(item, nextItem) {
+      if (item.kind === "pile" && nextItem?.kind === "carry" && nextItem.toPlace === item.place) {
+        return ROW_ITEM_GAP * 0.3;
+      }
+      return ROW_ITEM_GAP;
+    }
+
+    function computeRowItemLayout(extraPilePlaces = []) {
+      const items = computeGatheredRowItems(extraPilePlaces);
+      const slotMap = new Map();
+      if (!items.length) return { items, slotMap };
+
+      let totalW = 0;
+      items.forEach((it, i) => {
+        totalW += rowItemWidth(it);
+        if (i < items.length - 1) totalW += rowGapAfter(it, items[i + 1]);
+      });
+
+      let fx = -totalW / 2;
+      items.forEach((it, i) => {
+        const key = it.kind === "pile" ? `pile:${it.place}` : `carry:${it.toPlace}`;
+        slotMap.set(key, { item: it, x: fx, width: rowItemWidth(it) });
+        fx += rowItemWidth(it);
+        if (i < items.length - 1) fx += rowGapAfter(it, items[i + 1]);
+      });
+      return { items, slotMap };
+    }
+
+    function computeGatheredRowSlots(extraPlaces = []) {
+      const { slotMap } = computeRowItemLayout(extraPlaces);
+      const slots = new Map();
+      slotMap.forEach((slot, key) => {
+        if (key.startsWith("pile:")) slots.set(parseInt(key.slice(5), 10), slot);
+      });
+      return slots;
+    }
+
+    function computeGatheredLayoutSlots() {
+      return computeGatheredRowSlots();
     }
 
     const ANIM_DUR = 720;
@@ -1186,64 +1294,76 @@
     }
 
     function computeGatherPileOriginX(targetPlace) {
-      const sorted = [...verticalGatheredPlaces].sort((a, b) => b - a);
-      let totalW = 0;
-      sorted.forEach((pl, i) => {
-        totalW += gatheredLayoutWidth(pl);
-        if (i < sorted.length - 1) totalW += layoutGapAfter(pl);
-      });
-      let fx = -totalW / 2;
-      for (const pl of sorted) {
-        if (pl === targetPlace) return fx;
-        fx += gatheredLayoutWidth(pl) + layoutGapAfter(pl);
-      }
-      return 0;
+      const extra = getGatheredSegment(targetPlace) ? [] : [targetPlace];
+      const { slotMap } = computeRowItemLayout(extra);
+      const slot = slotMap.get(`pile:${targetPlace}`);
+      return slot ? slot.x : 0;
     }
 
     function getGatheredSegments(place) {
       return segments.filter((s) => s.isGathered && s.place === place);
     }
 
-    function gatheredLayoutWidth(place) {
+    function gatheredMainWidth(place) {
       const segs = getGatheredSegments(place);
-      const digit = Math.floor(numA / place) % 10;
-      const fallback = combinePlaceSegWidth(place, digit);
-      if (!segs.length) return fallback;
-      return Math.max(fallback, ...segs.map((s) => measureSegWidth(s)));
+      if (!segs.length) return estimatedGatheredWidth(place, expectedGatherUnitCount(place));
+      const unitCount = segs.reduce(
+        (sum, seg) => sum + groupMeshesByPlaceUnit(seg, place).length,
+        0
+      );
+      return estimatedGatheredWidth(place, Math.max(unitCount, 1));
     }
 
     function layoutGapAfter(place) {
-      if (place >= 1000) return GATHER_PLACE_GAP * 2.8;
-      if (place >= 100) return GATHER_PLACE_GAP * 2.2;
+      if (place >= 1000) return GATHER_PLACE_GAP * 3.6;
+      if (place >= 100) return GATHER_PLACE_GAP * 4.8;
       return GATHER_PLACE_GAP;
     }
 
-    /** 合并后各数位仅横向错开，同一纵深 */
-    function gatherPositionForPlace(fx) {
-      return { x: fx, y: GATHER_Y, z: GATHER_Z };
+    const ROW_DISPLAY_Z = GATHER_Z + 0.42;
+
+    function rowItemPosition(slotX) {
+      return { x: slotX, y: GATHER_Y, z: ROW_DISPLAY_Z };
+    }
+
+    /** 合并后各数位横向错开；同排时十位在前、百位在后，避免遮挡 */
+    function gatherPositionForPlace(fx, place) {
+      return rowItemPosition(fx);
+    }
+
+    function computePendingCarryPosition(toPlace) {
+      const pending = verticalPendingCarries.get(toPlace);
+      if (!pending) return null;
+      const { slotMap } = computeRowItemLayout();
+      const slot = slotMap.get(`carry:${toPlace}`);
+      if (slot) return rowItemPosition(slot.x);
+      const carryW = estimatedGatheredWidth(toPlace, pending.carryUnits);
+      return { x: -carryW - GATHER_PLACE_GAP, y: GATHER_Y, z: ROW_DISPLAY_Z };
     }
 
     function layoutAllGatheredPiles(animate = false) {
       parseInputs();
-      const sorted = [...verticalGatheredPlaces].sort((a, b) => b - a);
-      if (!sorted.length) return Promise.resolve();
+      const { items, slotMap } = computeRowItemLayout();
+      if (!items.length) return Promise.resolve();
 
-      let totalW = 0;
-      sorted.forEach((pl, i) => {
-        totalW += gatheredLayoutWidth(pl);
-        if (i < sorted.length - 1) totalW += layoutGapAfter(pl);
-      });
-
-      let fx = -totalW / 2;
       const tasks = [];
-      sorted.forEach((pl, idx) => {
-        const pos = gatherPositionForPlace(fx);
-        getGatheredSegments(pl).forEach((seg) => {
-          if (animate) tasks.push(animateGroupTo(seg.threeGroup, pos));
-          else seg.threeGroup.position.set(pos.x, pos.y, pos.z);
-        });
-        fx += gatheredLayoutWidth(pl);
-        if (idx < sorted.length - 1) fx += layoutGapAfter(pl);
+      items.forEach((it) => {
+        if (it.kind === "pile") {
+          const slot = slotMap.get(`pile:${it.place}`);
+          if (!slot) return;
+          const pos = gatherPositionForPlace(slot.x, it.place);
+          getGatheredSegments(it.place).forEach((seg) => {
+            if (animate) tasks.push(animateGroupTo(seg.threeGroup, pos));
+            else seg.threeGroup.position.set(pos.x, pos.y, pos.z);
+          });
+        } else {
+          const slot = slotMap.get(`carry:${it.toPlace}`);
+          const { carryGroup } = it.pending;
+          if (!slot || !carryGroup) return;
+          const pos = rowItemPosition(slot.x);
+          if (animate) tasks.push(animateGroupTo(carryGroup, pos));
+          else carryGroup.position.set(pos.x, pos.y, pos.z);
+        }
       });
 
       centerGroup();
@@ -1280,14 +1400,23 @@
           .sort((a, b) => b.position.y - a.position.y || b.position.z - a.position.z)
           .map((m) => ({ meshes: [m] }));
       }
-      const byZ = new Map();
+      const unitW = placeUnitWidth(place);
+      const byUnit = new Map();
       seg.meshes.forEach((m) => {
-        const z = Math.round(m.position.z / BLOCK_SP);
-        if (!byZ.has(z)) byZ.set(z, []);
-        byZ.get(z).push(m);
+        const ux = Math.floor((m.position.x + 0.001) / unitW);
+        const uz = Math.round((m.position.z - BLOCK / 2) / BLOCK_SP);
+        const key = `${ux},${uz}`;
+        if (!byUnit.has(key)) byUnit.set(key, []);
+        byUnit.get(key).push(m);
       });
-      return [...byZ.entries()]
-        .sort((a, b) => b[0] - a[0])
+      return [...byUnit.entries()]
+        .sort((a, b) => {
+          const [, az] = a[0].split(",").map(Number);
+          const [, bz] = b[0].split(",").map(Number);
+          const [ax] = a[0].split(",").map(Number);
+          const [bx] = b[0].split(",").map(Number);
+          return bz - az || ax - bx;
+        })
         .map(([, meshes]) => ({ meshes }));
     }
 
@@ -1393,11 +1522,249 @@
         }
 
         buildFromPlaceCounts(finalCounts, true);
-        updateHints();
         updatePileLabels();
       } finally {
         combineAnimRunning = false;
       }
+    }
+
+    function getGatheredSegment(place) {
+      return segments.find((s) => s.isGathered && s.place === place);
+    }
+
+    function carryColumnToPlaces(column) {
+      const toPlace = V_ZONE_TO_PLACE[column];
+      const idx = PLACES.indexOf(toPlace);
+      if (idx <= 0) return null;
+      return { fromPlace: PLACES[idx - 1], toPlace };
+    }
+
+    function sampleLayoutPositionsForUnits(place, unitCount, startUnitIndex = 0) {
+      const temp = createSegment(-992, place);
+      if (place === 1) {
+        for (let y = 0; y < unitCount; y++) addBlock(temp, 0, y, 0, colorForPlace(1));
+      } else if (isCombineGroupStack()) {
+        for (let u = 0; u < unitCount; u++) {
+          drawPlaceUnit(temp, 0, startUnitIndex + u, place, colorForPlace(place));
+        }
+      } else {
+        let lx = 0;
+        for (let u = 0; u < unitCount; u++) {
+          drawPlaceUnit(temp, lx, 0, place, colorForPlace(place));
+          lx += placeUnitWidth(place);
+        }
+      }
+      const positions = temp.meshes.map((m) => m.position.clone());
+      removeSegmentFromScene(temp);
+      return positions;
+    }
+
+    function carryIntoPlace(place) {
+      const zoneMap = { 10: "tens", 100: "hundreds", 1000: "thousands" };
+      const col = zoneMap[place];
+      if (!col) return 0;
+      const stroke = vStrokes.find((s) => s.type === "nearAbove" && s.column === col);
+      if (stroke?.digit) return parseInt(stroke.digit, 10) || 0;
+      const exp = getExpectedCarries().find((c) => c.column === col);
+      return exp ? parseInt(exp.digit, 10) || 0 : 0;
+    }
+
+    function verticalLineSum(fromPlace) {
+      const digit = Math.floor(numA / fromPlace) % 10;
+      return digit * numB + carryIntoPlace(fromPlace);
+    }
+
+    function carryUnitsToDetach(fromPlace, toPlace, carryUnits) {
+      return carryUnits * (toPlace / fromPlace);
+    }
+
+    function detachCarryMeshes(fromSeg, fromPlace, toPlace, carryUnits) {
+      const unitsToTake = carryUnitsToDetach(fromPlace, toPlace, carryUnits);
+      const units = groupMeshesByPlaceUnit(fromSeg, fromPlace).slice(0, unitsToTake);
+      const meshes = units.flatMap((u) => u.meshes);
+      meshes.forEach((m) => {
+        fromSeg.threeGroup.remove(m);
+        fromSeg.meshes = fromSeg.meshes.filter((x) => x !== m);
+        blocks = blocks.filter((b) => b.mesh !== m);
+      });
+      return meshes;
+    }
+
+    function clearVerticalPendingCarries() {
+      verticalPendingCarries.forEach(({ carryGroup }) => {
+        if (carryGroup?.parent) blockGroup.remove(carryGroup);
+      });
+      verticalPendingCarries.clear();
+    }
+
+    const V_CARRY_SPLIT_DUR = 880;
+    const V_CARRY_SPLIT_PAUSE = 220;
+    const V_CARRY_FLY_DUR = 1050;
+    const V_CARRY_LAND_DUR = 620;
+
+    async function animateVerticalCarrySplit(fromPlace, toPlace, carryUnits, manageFlow = true) {
+      if (!carryUnits || verticalPendingCarries.has(toPlace)) return;
+
+      if (!verticalGatheredPlaces.includes(fromPlace)) {
+        await verticalExtractPlace(fromPlace);
+        await delay(180);
+        await verticalGatherPlace(fromPlace);
+      }
+
+      const fromSeg = getGatheredSegment(fromPlace);
+      if (!fromSeg) return;
+
+      if (manageFlow) {
+        verticalFlowRunning = true;
+        updateVerticalUndoBtn();
+      }
+
+      const fromHome = fromSeg.threeGroup.position.clone();
+      const splitPull = extractPullForPlace(fromPlace);
+      await animateGroupTo(
+        fromSeg.threeGroup,
+        { x: fromHome.x, y: splitPull.y, z: splitPull.z },
+        V_CARRY_SPLIT_DUR * 0.55
+      );
+
+      const carryMeshes = detachCarryMeshes(fromSeg, fromPlace, toPlace, carryUnits);
+      if (!carryMeshes.length) {
+        await animateGroupTo(fromSeg.threeGroup, fromHome, V_CARRY_SPLIT_DUR * 0.45);
+        if (manageFlow) {
+          verticalFlowRunning = false;
+          updateVerticalUndoBtn();
+        }
+        return;
+      }
+
+      const carryGroup = new THREE.Group();
+      blockGroup.add(carryGroup);
+      carryGroup.position.copy(fromSeg.threeGroup.position);
+      const positions = sampleLayoutPositionsForUnits(toPlace, carryUnits);
+      carryMeshes.forEach((m, i) => {
+        carryGroup.attach(m);
+        if (positions[i]) m.position.copy(positions[i]);
+      });
+
+      const remainUnits = groupMeshesByPlaceUnit(fromSeg, fromPlace);
+      const remainPositions = sampleLayoutPositionsForUnits(fromPlace, remainUnits.length);
+      let posIdx = 0;
+      remainUnits.forEach((unit) => {
+        unit.meshes.forEach((m) => {
+          if (remainPositions[posIdx]) m.position.copy(remainPositions[posIdx]);
+          posIdx++;
+        });
+      });
+
+      if (!verticalGatheredPlaces.includes(toPlace)) {
+        verticalGatheredPlaces.push(toPlace);
+        verticalGatheredPlaces.sort((a, b) => b - a);
+      }
+      verticalPendingCarries.set(toPlace, { carryGroup, fromPlace, toPlace, carryUnits });
+      const splitTarget =
+        computePendingCarryPosition(toPlace) ||
+        pendingCarryHoldPosition(fromHome, toPlace, carryUnits);
+      await animateGroupTo(carryGroup, splitTarget, V_CARRY_SPLIT_DUR);
+      await delay(V_CARRY_SPLIT_PAUSE);
+
+      const { slotMap } = computeRowItemLayout();
+      const remainSlot = slotMap.get(`pile:${fromPlace}`);
+      if (remainSlot) {
+        await animateGroupTo(fromSeg.threeGroup, rowItemPosition(remainSlot.x), V_CARRY_SPLIT_DUR * 0.55);
+      }
+
+      await layoutAllGatheredPiles(false);
+
+      if (manageFlow) {
+        verticalFlowRunning = false;
+        updateVerticalUndoBtn();
+      }
+    }
+
+    function pendingCarryHoldPosition(fromHome, toPlace, carryUnits = 1) {
+      const carryW = estimatedGatheredWidth(toPlace, carryUnits);
+      return {
+        x: fromHome.x - carryW - GATHER_PLACE_GAP * 0.15,
+        y: GATHER_Y,
+        z: ROW_DISPLAY_Z
+      };
+    }
+
+    async function mergePendingCarryIntoPlace(toPlace, animateFly = true) {
+      const pending = verticalPendingCarries.get(toPlace);
+      if (!pending) return;
+
+      const { carryGroup, carryUnits } = pending;
+      if (!verticalGatheredPlaces.includes(toPlace)) {
+        verticalGatheredPlaces.push(toPlace);
+        verticalGatheredPlaces.sort((a, b) => b - a);
+      }
+
+      let targetSeg = getGatheredSegment(toPlace);
+      if (!targetSeg) {
+        createSegment(2000 + toPlace, toPlace, true);
+        await layoutAllGatheredPiles(false);
+        targetSeg = getGatheredSegment(toPlace);
+      }
+      if (!targetSeg || !carryGroup) {
+        clearVerticalPendingCarries();
+        return;
+      }
+
+      const dest = targetSeg.threeGroup.position.clone();
+      if (animateFly) {
+        await animateGroupTo(
+          carryGroup,
+          { x: dest.x, y: dest.y + 0.08, z: dest.z },
+          V_CARRY_FLY_DUR
+        );
+        await animateGroupTo(
+          carryGroup,
+          { x: dest.x, y: dest.y, z: dest.z },
+          V_CARRY_LAND_DUR
+        );
+      }
+
+      const existingUnits = groupMeshesByPlaceUnit(targetSeg, toPlace).length;
+      const carryMeshes = [];
+      carryGroup.children.forEach((c) => {
+        if (c.isMesh) carryMeshes.push(c);
+      });
+      const appendPositions = sampleLayoutPositionsForUnits(toPlace, carryUnits, existingUnits);
+      carryMeshes.forEach((m, i) => {
+        carryGroup.remove(m);
+        targetSeg.threeGroup.add(m);
+        targetSeg.meshes.push(m);
+        blocks.push({ mesh: m, seg: targetSeg });
+        if (appendPositions[i]) m.position.copy(appendPositions[i]);
+      });
+      blockGroup.remove(carryGroup);
+      verticalPendingCarries.delete(toPlace);
+
+      highlightGatherSeg(targetSeg);
+      await layoutAllGatheredPiles(animateFly);
+      centerGroup();
+      fitCameraToBlocks();
+      updatePileLabels();
+    }
+
+    async function animateVerticalCarryTransfer(toPlace) {
+      if (verticalFlowRunning) return;
+      verticalFlowRunning = true;
+      updateVerticalUndoBtn();
+      await mergePendingCarryIntoPlace(toPlace, true);
+      verticalFlowRunning = false;
+      updateVerticalUndoBtn();
+    }
+
+    async function handleVerticalCarryWrite(column, digitStr) {
+      const mapping = carryColumnToPlaces(column);
+      if (!mapping) return;
+      const carryUnits = parseInt(digitStr, 10);
+      if (!carryUnits) return;
+      const { fromPlace, toPlace } = mapping;
+      if (verticalPendingCarries.has(toPlace)) return;
+      await animateVerticalCarrySplit(fromPlace, toPlace, carryUnits);
     }
 
     function removeSegmentFromScene(seg) {
@@ -1437,7 +1804,7 @@
 
     function copyMeshesIntoGathered(gathered, place, digit, g, meshes) {
       const stackGroups = isCombineGroupStack();
-      const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
+      const colColor = colorForPlace(place);
       const temp = createSegment(-999, place);
 
       if (place === 1) {
@@ -1470,14 +1837,15 @@
         return;
       }
 
+      const pull = extractPullForPlace(targetPlace);
       await Promise.all(
         segs.map((seg) => {
-          if (seg.threeGroup.position.z >= EXTRACT_PULL_Z - 0.05) return Promise.resolve();
+          if (seg.threeGroup.position.z >= pull.z - 0.05) return Promise.resolve();
           highlightExtractSeg(seg);
           return animateGroupTo(seg.threeGroup, {
             x: seg.threeGroup.position.x,
-            y: EXTRACT_PULL_Y,
-            z: EXTRACT_PULL_Z
+            y: pull.y,
+            z: pull.z
           });
         })
       );
@@ -1497,7 +1865,7 @@
       }
 
       const pileX = computeGatherPileOriginX(targetPlace);
-      const prePos = gatherPositionForPlace(pileX);
+      const prePos = gatherPositionForPlace(pileX, targetPlace);
       await Promise.all(segs.map((seg) => animateGroupTo(seg.threeGroup, prePos)));
 
       finalizeGatherMerge(targetPlace);
@@ -1508,7 +1876,7 @@
       blocks.forEach((b) => b.mesh.scale.setScalar(1));
     }
 
-  /** 拆：按各位数拆成整1/整10/整100/整1000 列，组内同色 */
+  /** 拆：按各位数拆成整1/整10/整100/整1000 列，同位同色 */
     function buildDecompose() {
       clearBlocks();
       const { places } = parseInputs();
@@ -1519,12 +1887,12 @@
 
       for (let g = 0; g < groups; g++) {
         const gx = startX + g * groupW;
-        const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
         let x = gx - groupInnerW / 2;
         const activePlaces = [...places].reverse().filter((p) => p.digit > 0);
 
         activePlaces.forEach((p, i) => {
           const { place, digit } = p;
+          const colColor = colorForPlace(place);
           const seg = createSegment(g, place);
           seg.threeGroup.position.set(x, 0, 0);
           if (place === 1) {
@@ -1549,7 +1917,7 @@
 
       for (let g = 0; g < groups; g++) {
         const gx = startX + g * groupW;
-        const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
+        const colColor = colorForPlace(1);
         const seg = createSegment(g, 0);
         seg.threeGroup.position.set(gx, 0, 0);
         for (let y = 0; y < numA; y++) addBlock(seg, 0, y, 0, colColor);
@@ -1576,11 +1944,11 @@
       let x = -totalW / 2;
       activePlaces.forEach((p, i) => {
         const { place, digit } = p;
+        const colColor = colorForPlace(place);
         const seg = createSegment(0, place);
         seg.threeGroup.position.set(x, 0, 0);
         if (place === 1) {
           for (let g = 0; g < numB; g++) {
-            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             if (stackGroups) {
               for (let y = 0; y < digit; y++) addBlock(seg, 0, y, g, colColor);
             } else {
@@ -1589,13 +1957,11 @@
           }
         } else if (stackGroups) {
           for (let g = 0; g < numB; g++) {
-            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             drawPlaceGroup(seg, 0, g, place, digit, colColor, false);
           }
         } else {
           let lx = 0;
           for (let g = 0; g < numB; g++) {
-            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             for (let d = 0; d < digit; d++) {
               drawPlaceUnit(seg, lx, 0, place, colColor);
               lx += placeUnitWidth(place);
@@ -1628,14 +1994,15 @@
 
       for (let g = 0; g < groups; g++) {
         const gx = startX + g * groupW;
-        const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
         let x = gx - groupInnerW / 2;
 
         activePlaces.forEach((p, i) => {
           const { place, digit } = p;
+          const colColor = colorForPlace(place);
           const seg = createSegment(g, place);
           const isExtract = place === targetPlace;
-          seg.threeGroup.position.set(x, isExtract ? EXTRACT_PULL_Y : 0, isExtract ? EXTRACT_PULL_Z : 0);
+          const pull = isExtract ? extractPullForPlace(targetPlace) : null;
+          seg.threeGroup.position.set(x, isExtract ? pull.y : 0, isExtract ? pull.z : 0);
           if (place === 1) {
             for (let y = 0; y < digit; y++) addBlock(seg, 0, y, 0, colColor);
           } else {
@@ -1675,10 +2042,10 @@
 
         for (let g = 0; g < groups; g++) {
           const gx = startX + g * groupW;
-          const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
           let x = gx - bgInnerW / 2;
           bgPlaces.forEach((p, i) => {
             const { place, digit } = p;
+            const colColor = colorForPlace(place);
             const seg = createSegment(g, place);
             seg.threeGroup.position.set(x, 0, 0);
             if (place === 1) {
@@ -1703,13 +2070,13 @@
       sortedGathered.forEach((place, idx) => {
         const digit = Math.floor(numA / place) % 10;
         if (digit === 0) return;
+        const colColor = colorForPlace(place);
         const seg = createSegment(1000 + place, place, true);
-        const pos = gatherPositionForPlace(fx);
+        const pos = gatherPositionForPlace(fx, place);
         seg.threeGroup.position.set(pos.x, pos.y, pos.z);
 
         if (place === 1) {
           for (let g = 0; g < numB; g++) {
-            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             if (stackGroups) {
               for (let y = 0; y < digit; y++) addBlock(seg, 0, y, g, colColor);
             } else {
@@ -1718,13 +2085,11 @@
           }
         } else if (stackGroups) {
           for (let g = 0; g < numB; g++) {
-            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             drawPlaceGroup(seg, 0, g, place, digit, colColor, false);
           }
         } else {
           let lx = 0;
           for (let g = 0; g < numB; g++) {
-            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             for (let d = 0; d < digit; d++) {
               drawPlaceUnit(seg, lx, 0, place, colColor);
               lx += placeUnitWidth(place);
@@ -1765,11 +2130,11 @@
       let x = -totalW / 2;
       activePlaces.forEach((p, i) => {
         const { place, digit } = p;
+        const colColor = colorForPlace(place);
         const seg = createSegment(0, place);
         seg.threeGroup.position.set(x, 0, 0);
         if (place === 1) {
           for (let g = 0; g < numB; g++) {
-            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             if (stackGroups) {
               for (let y = 0; y < digit; y++) addBlock(seg, 0, y, g, colColor);
             } else {
@@ -1778,13 +2143,11 @@
           }
         } else if (stackGroups) {
           for (let g = 0; g < numB; g++) {
-            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             drawPlaceGroup(seg, 0, g, place, digit, colColor, false);
           }
         } else {
           let lx = 0;
           for (let g = 0; g < numB; g++) {
-            const colColor = GROUP_COLORS[g % GROUP_COLORS.length];
             for (let d = 0; d < digit; d++) {
               drawPlaceUnit(seg, lx, 0, place, colColor);
               lx += placeUnitWidth(place);
@@ -1812,22 +2175,6 @@
       const c = box.getCenter(new THREE.Vector3());
       blockGroup.position.x = -c.x;
       blockGroup.position.z = -c.z;
-    }
-
-    function updateHints() {
-      const { places, product } = parseInputs();
-      const expr = decomposeExpr(numA);
-      const splitDesc = splitDescFromPlaces(places);
-
-      if (mode === "decompose") {
-        hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}<br>${numA} = ${expr}，共 ${numB} 组<br><span style="opacity:0.85">分模式：每组按百→十→个排列，${splitDesc}</span>`;
-      } else if (mode === "calculate") {
-        hintBottom.innerHTML = `<strong>分步计算：</strong><br>${formatCombineFormula(numA, numB)}`;
-      } else if (mode === "multiply") {
-        hintBottom.innerHTML = `<strong>当前算式：</strong> ${numA} × ${numB} = ${product}<br><span style="opacity:0.85">分模式：${numB} 组，每组 ${numA} 个方块一列</span>`;
-      } else {
-        hintBottom.innerHTML = `<strong>乘积模式：</strong><br>${formatCombineFormula(numA, numB)}<br><span style="opacity:0.85">合模式：各位乘积合并（${splitDesc}）× ${numB}</span>`;
-      }
     }
 
     function rebuild() {
@@ -2217,7 +2564,40 @@
       updateVerticalUndoBtn();
     }
 
+    function isCarryOnlyResultZone(zone) {
+      const place = V_ZONE_TO_PLACE[zone];
+      return place && Math.floor(numA / place) % 10 === 0;
+    }
+
+    async function verticalResultBlockFlow(zone) {
+      const place = V_ZONE_TO_PLACE[zone];
+      if (!place) return;
+      if (verticalFlowRunning) return;
+      verticalFlowRunning = true;
+      updateVerticalUndoBtn();
+      const hasArrow = vStrokes.some((s) => s.type === "above" && s.target === zone);
+      if (shouldVerticalFlowForZone(zone) && !hasArrow) {
+        await verticalExtractPlace(place);
+        await delay(180);
+        await verticalGatherPlace(place);
+      }
+      if (place === 10) {
+        await mergePendingCarryIntoPlace(10, false);
+        const carryOut = Math.floor(verticalLineSum(10) / 10);
+        if (carryOut > 0) {
+          await animateVerticalCarrySplit(10, 100, carryOut, false);
+        }
+      } else if (isCarryOnlyResultZone(zone)) {
+        await mergePendingCarryIntoPlace(place, false);
+      } else {
+        await mergePendingCarryIntoPlace(place, true);
+      }
+      verticalFlowRunning = false;
+      updateVerticalUndoBtn();
+    }
+
     function resetVerticalGather() {
+      clearVerticalPendingCarries();
       verticalGatheredPlaces = [];
     }
 
@@ -2337,6 +2717,7 @@
     function undoVerticalStroke() {
       if (verticalFlowRunning || !vStrokes.length) return;
       vStrokes.pop();
+      clearVerticalPendingCarries();
       syncWriteCountsFromStrokes();
       syncEquationsFromStrokes();
       syncGatheredFromStrokes();
@@ -2562,16 +2943,12 @@
 
       if (zone === "ones") {
         vShowOnesEq();
-        if (shouldVerticalFlowForZone(zone) && !vStrokes.some((s) => s.type === "above" && s.target === zone)) {
-          verticalPlaceFlow(V_ZONE_TO_PLACE[zone]);
-        }
+        verticalResultBlockFlow(zone);
       } else if (zone === "tens") {
         vShowTensEqs();
-        if (shouldVerticalFlowForZone(zone) && !vStrokes.some((s) => s.type === "above" && s.target === zone)) {
-          verticalPlaceFlow(V_ZONE_TO_PLACE[zone]);
-        }
-      } else if (shouldVerticalFlowForZone(zone) && !vStrokes.some((s) => s.type === "above" && s.target === zone)) {
-        verticalPlaceFlow(V_ZONE_TO_PLACE[zone]);
+        verticalResultBlockFlow(zone);
+      } else {
+        verticalResultBlockFlow(zone);
       }
 
       if (zone === meta.resultZones[0]) vShowFinalEqs();
@@ -2600,6 +2977,10 @@
           }
         }
         vStrokes.push(hit);
+        if (hit.carry && hit.column) {
+          handleVerticalCarryWrite(hit.column, hit.digit);
+        }
+        updateVerticalUndoBtn();
         return;
       }
 
