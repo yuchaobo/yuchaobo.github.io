@@ -552,9 +552,9 @@
 
     const PLACE_GAP = 0.5;
     /** 拆/生成：百、十、个之间的横向间距 */
-    const DECOMPOSE_PLACE_GAP = 1.15;
+    const DECOMPOSE_PLACE_GAP = 1.4;
     /** 算/合：百十个同排时，位与位之间的横向间距 */
-    const COMBINE_PLACE_GAP = 0.55;
+    const COMBINE_PLACE_GAP = 0.85;
 
     function placeUnitWidth(place) {
       if (place === 100) return 10 * BLOCK_SP;
@@ -606,6 +606,119 @@
           term: p.digit * p.place,
           value: p.digit * p.place * b
         }));
+    }
+
+    /** 合：各位乘积经进位后，每位应显示的整单位数量 */
+    function getCombineDisplayCounts() {
+      const counts = new Map();
+      let carry = 0;
+      for (const place of PLACES) {
+        const digit = Math.floor(numA / place) % 10;
+        const lineSum = digit * numB + carry;
+        carry = Math.floor(lineSum / 10);
+        const remain = lineSum % 10;
+        if (remain > 0) counts.set(place, remain);
+      }
+      return counts;
+    }
+
+    /** 合：逐步进位拆合计划（如 6×3=18 → 1 个整十 + 8 个一） */
+    function getCarryDecomposePlan() {
+      const steps = [];
+      const working = new Map();
+      getPlaceDigits(numA).forEach(({ place, digit }) => {
+        if (digit > 0) working.set(place, digit * numB);
+      });
+
+      for (let i = 0; i < PLACES.length; i++) {
+        const place = PLACES[i];
+        const digit = Math.floor(numA / place) % 10;
+        const nextPlace = PLACES[i + 1];
+        if (!digit || !nextPlace) continue;
+
+        const partial = digit * numB;
+        if (partial < 10) continue;
+
+        const carryOut = Math.floor(partial / 10);
+        const remain = partial % 10;
+        working.set(place, remain);
+        working.set(nextPlace, (working.get(nextPlace) || 0) + carryOut);
+        steps.push({ place, nextPlace, carryOut, remain, counts: new Map(working) });
+      }
+
+      return { steps, finalCounts: getCombineDisplayCounts() };
+    }
+
+    function combineCarriedSegWidth(place, count) {
+      if (isCombineGroupStack()) {
+        if (place === 1) return BLOCK_SP;
+        return placeGroupWidth(place, count);
+      }
+      if (place === 1) return BLOCK_SP;
+      return placeGroupWidth(place, count);
+    }
+
+    /** 按位值数量排布积木（合模式进位后） */
+    function buildFromPlaceCounts(counts, skipAnimate = false, highlightPlace = null) {
+      clearBlocks();
+      const active = [...counts.entries()]
+        .filter(([, c]) => c > 0)
+        .sort((a, b) => b[0] - a[0]);
+
+      if (!active.length) {
+        finishBuild(skipAnimate);
+        return;
+      }
+
+      const stackGroups = isCombineGroupStack();
+      let totalW = 0;
+      active.forEach(([place, count], i) => {
+        totalW += combineCarriedSegWidth(place, count);
+        if (i < active.length - 1) totalW += COMBINE_PLACE_GAP;
+      });
+
+      let x = -totalW / 2;
+      active.forEach(([place, count], i) => {
+        const colColor = GROUP_COLORS[Math.log10(place) % GROUP_COLORS.length];
+        const seg = createSegment(0, place);
+        seg.threeGroup.position.set(x, 0, 0);
+
+        if (place === 1) {
+          for (let y = 0; y < count; y++) addBlock(seg, 0, y, 0, colColor);
+        } else if (stackGroups) {
+          for (let g = 0; g < count; g++) drawPlaceUnit(seg, 0, g, place, colColor);
+        } else {
+          let lx = 0;
+          for (let d = 0; d < count; d++) {
+            drawPlaceUnit(seg, lx, 0, place, colColor);
+            lx += placeUnitWidth(place);
+          }
+        }
+
+        if (highlightPlace === place) highlightGatherSeg(seg);
+
+        const next = active[i + 1];
+        if (next) x += measureSegWidth(seg) + COMBINE_PLACE_GAP;
+        else x += measureSegWidth(seg);
+      });
+
+      finishBuild(skipAnimate);
+    }
+
+    const CARRY_ANIM_PAUSE = 520;
+
+    async function applyCombineCarries() {
+      const { steps, finalCounts } = getCarryDecomposePlan();
+
+      for (const step of steps) {
+        buildFromPlaceCounts(step.counts, true, step.nextPlace);
+        updatePileLabels();
+        await delay(CARRY_ANIM_PAUSE);
+      }
+
+      buildFromPlaceCounts(finalCounts, true);
+      updateHints();
+      updatePileLabels();
     }
 
     function getEquationLineItems(step) {
@@ -1040,7 +1153,7 @@
     const EXTRACT_PULL_Y = 0.2;
     const GATHER_Z = 3.0;
     const GATHER_Y = 0.25;
-    const GATHER_PLACE_GAP = 0.9;
+    const GATHER_PLACE_GAP = 1.15;
 
     function measureSegWidth(seg) {
       let maxX = 0;
@@ -1600,7 +1713,8 @@
     function rebuild() {
       blockGroup.position.set(0, 0, 0);
       if (mode === "decompose") buildDecompose();
-      else if (mode === "combine" || mode === "calculate") buildCombine();
+      else if (mode === "combine") buildFromPlaceCounts(getCombineDisplayCounts());
+      else if (mode === "calculate") buildCombine();
       else buildMultiply();
     }
 
@@ -1803,17 +1917,19 @@
       setEqStep(Math.max(eqStep, 2));
       buildCombine();
     });
-    document.getElementById("btnCombine").addEventListener("click", () => {
+    document.getElementById("btnCombine").addEventListener("click", async () => {
       parseInputs();
       const prevMode = mode;
+      if (!blocks.length) {
+        mode = "calculate";
+        buildCombine();
+      } else if (prevMode !== "calculate" && prevMode !== "combine") {
+        mode = "calculate";
+        buildCombine();
+      }
       mode = "combine";
       setEqStep(3);
-      if (blocks.length && (prevMode === "calculate" || prevMode === "combine")) {
-        updateHints();
-        updatePileLabels();
-        return;
-      }
-      buildCombine(true);
+      await applyCombineCarries();
     });
 
     /* ========== 竖式乘法 + 个位自动拆合 ========== */
