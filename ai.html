@@ -456,6 +456,7 @@
 
     let numA = 24, numB = 2;
     let mode = "multiply"; // multiply | decompose | calculate | combine
+    let combineAnimRunning = false;
     let verticalGatheredPlaces = []; // 竖式独立流程：已提出并合并的位
     let eqStep = 0; // 0 空 | 1 总式 | 2 +按位乘 | 3 +相加
     let visiblePileFormulasKey = "";
@@ -703,22 +704,6 @@
       });
 
       finishBuild(skipAnimate);
-    }
-
-    const CARRY_ANIM_PAUSE = 520;
-
-    async function applyCombineCarries() {
-      const { steps, finalCounts } = getCarryDecomposePlan();
-
-      for (const step of steps) {
-        buildFromPlaceCounts(step.counts, true, step.nextPlace);
-        updatePileLabels();
-        await delay(CARRY_ANIM_PAUSE);
-      }
-
-      buildFromPlaceCounts(finalCounts, true);
-      updateHints();
-      updatePileLabels();
     }
 
     function getEquationLineItems(step) {
@@ -1278,6 +1263,141 @@
         m.material.emissive.setHex(0x2e6b48);
         m.material.emissiveIntensity = 0.2;
       });
+    }
+
+    const CARRY_EXTRACT_DUR = 920;
+    const CARRY_FLY_DUR = 1100;
+    const CARRY_MERGE_DUR = 680;
+    const CARRY_STEP_PAUSE = 360;
+
+    function getCombineSegment(place) {
+      return segments.find((s) => s.place === place && !s.isGathered);
+    }
+
+    function groupMeshesByPlaceUnit(seg, place) {
+      if (place === 1) {
+        return [...seg.meshes]
+          .sort((a, b) => b.position.y - a.position.y || b.position.z - a.position.z)
+          .map((m) => ({ meshes: [m] }));
+      }
+      const byZ = new Map();
+      seg.meshes.forEach((m) => {
+        const z = Math.round(m.position.z / BLOCK_SP);
+        if (!byZ.has(z)) byZ.set(z, []);
+        byZ.get(z).push(m);
+      });
+      return [...byZ.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([, meshes]) => ({ meshes }));
+    }
+
+    function computeLayoutX(counts, targetPlace) {
+      const active = [...counts.entries()].filter(([, c]) => c > 0).sort((a, b) => b[0] - a[0]);
+      let totalW = 0;
+      active.forEach(([place, count], i) => {
+        totalW += combineCarriedSegWidth(place, count);
+        if (i < active.length - 1) totalW += COMBINE_PLACE_GAP;
+      });
+      let x = -totalW / 2;
+      for (let i = 0; i < active.length; i++) {
+        const [place, count] = active[i];
+        if (place === targetPlace) return x;
+        x += combineCarriedSegWidth(place, count);
+        if (i < active.length - 1) x += COMBINE_PLACE_GAP;
+      }
+      return x;
+    }
+
+    function disposeCarryMeshes(meshes) {
+      meshes.forEach((m) => {
+        m.geometry?.dispose();
+        m.material?.dispose();
+        if (m.parent) m.parent.remove(m);
+      });
+    }
+
+    async function animateCarryDecomposeStep(step) {
+      const { place, nextPlace, carryOut, counts } = step;
+      const fromSeg = getCombineSegment(place);
+      if (!fromSeg || !fromSeg.meshes.length) {
+        buildFromPlaceCounts(counts, true, nextPlace);
+        await delay(CARRY_STEP_PAUSE);
+        return;
+      }
+
+      const unitsToTake = Math.min(carryOut * 10, groupMeshesByPlaceUnit(fromSeg, place).length);
+      const units = groupMeshesByPlaceUnit(fromSeg, place).slice(0, unitsToTake);
+      const carryMeshes = units.flatMap((u) => u.meshes);
+      if (!carryMeshes.length) {
+        buildFromPlaceCounts(counts, true, nextPlace);
+        await delay(CARRY_STEP_PAUSE);
+        return;
+      }
+
+      const fromHome = fromSeg.threeGroup.position.clone();
+      highlightExtractSeg(fromSeg);
+      await animateGroupTo(
+        fromSeg.threeGroup,
+        { x: fromHome.x, y: EXTRACT_PULL_Y, z: EXTRACT_PULL_Z },
+        CARRY_EXTRACT_DUR
+      );
+      await delay(180);
+
+      const flyGroup = new THREE.Group();
+      blockGroup.add(flyGroup);
+      carryMeshes.forEach((m) => {
+        fromSeg.threeGroup.remove(m);
+        fromSeg.meshes = fromSeg.meshes.filter((mesh) => mesh !== m);
+        blocks = blocks.filter((b) => b.mesh !== m);
+        flyGroup.attach(m);
+        m.material.emissive.setHex(0xc2782a);
+        m.material.emissiveIntensity = 0.38;
+      });
+
+      const toSeg = getCombineSegment(nextPlace);
+      const destX = toSeg ? toSeg.threeGroup.position.x : computeLayoutX(counts, nextPlace);
+
+      await animateGroupTo(
+        flyGroup,
+        { x: destX, y: GATHER_Y + 0.55, z: EXTRACT_PULL_Z + 0.35 },
+        CARRY_FLY_DUR
+      );
+      await animateGroupTo(
+        flyGroup,
+        { x: destX, y: GATHER_Y + 0.08, z: GATHER_Z - 0.15 },
+        CARRY_MERGE_DUR
+      );
+
+      blockGroup.remove(flyGroup);
+      disposeCarryMeshes(carryMeshes);
+
+      if (fromSeg.meshes.length) {
+        await animateGroupTo(fromSeg.threeGroup, fromHome, CARRY_MERGE_DUR * 0.85);
+      } else {
+        removeSegmentFromScene(fromSeg);
+      }
+
+      buildFromPlaceCounts(counts, true, nextPlace);
+      updatePileLabels();
+      await delay(CARRY_STEP_PAUSE);
+    }
+
+    async function applyCombineCarries() {
+      if (combineAnimRunning) return;
+      combineAnimRunning = true;
+      try {
+        const { steps, finalCounts } = getCarryDecomposePlan();
+
+        for (const step of steps) {
+          await animateCarryDecomposeStep(step);
+        }
+
+        buildFromPlaceCounts(finalCounts, true);
+        updateHints();
+        updatePileLabels();
+      } finally {
+        combineAnimRunning = false;
+      }
     }
 
     function removeSegmentFromScene(seg) {
